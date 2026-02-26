@@ -120,11 +120,13 @@
     .logo {
       font-size: 1.4rem;
       font-weight: 800;
-      background: linear-gradient(135deg, var(--purple), var(--pink), var(--cyan));
+      background: linear-gradient(135deg, var(--emerald), var(--cyan), var(--purple), var(--orange));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
       letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
     }
     .nav-links { display: flex; gap: 32px; align-items: center; }
     .nav-links a {
@@ -800,7 +802,7 @@
   <!-- Nav -->
   <nav>
     <div class="container">
-      <div class="logo"><img src="logo.webp" alt="StrictDB logo" width="36" height="36" style="vertical-align:middle;margin-right:8px;">StrictDB</div>
+      <div class="logo"><img src="logo.webp" alt="StrictDB logo" width="56" height="56" style="vertical-align:middle;margin-right:10px;">StrictDB</div>
       <button class="mobile-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Toggle menu">&#9776;</button>
       <div class="nav-links">
         <a href="#features">Features</a>
