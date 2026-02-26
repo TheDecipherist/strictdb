@@ -2,6 +2,10 @@
   <img src="docs/strictDB_banner.jpg" alt="StrictDB — The Unified Database Driver for AI-First Development" width="100%">
 </a>
 
+<p align="center">
+  <a href="https://thedecipherist.github.io/strictdb/"><strong>View Full Documentation Website &rarr;</strong></a>
+</p>
+
 # StrictDB
 
 One unified API for MongoDB, PostgreSQL, MySQL, MSSQL, SQLite, and Elasticsearch. Write database queries once — run them anywhere.
