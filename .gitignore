@@ -6,7 +6,7 @@ dist/
 !.env.example
 _ai_temp/
 .claude/
-docs/
 *.tsbuildinfo
 coverage/
 plans/
+MDs/

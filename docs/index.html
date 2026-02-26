@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StrictDB - The Unified Database Driver for AI-First Development</title>
+  <meta name="description" content="One API for MongoDB, PostgreSQL, MySQL, MSSQL, SQLite, and Elasticsearch. Guardrails, self-correcting errors, schema discovery, and an MCP server — all included.">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>">
+
+  <!-- Prism.js theme -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+
+  <!-- Custom styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <nav class="container">
+      <ul>
+        <li>
+          <button id="menu-toggle" class="menu-toggle" aria-label="Toggle menu" aria-expanded="false">
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+          </button>
+          <div class="brand">
+            <div class="brand-text">
+              <span class="brand-title">StrictDB</span>
+              <span class="brand-author">by <a href="https://thedecipherist.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=header-author" target="_blank" rel="noopener">TheDecipherist</a></span>
+            </div>
+          </div>
+        </li>
+      </ul>
+      <ul>
+        <li><a href="https://github.com/TheDecipherist/strictdb" target="_blank" rel="noopener">GitHub</a></li>
+        <li><a href="https://www.npmjs.com/package/strictdb" target="_blank" rel="noopener">npm</a></li>
+        <li class="dropdown">
+          <button class="dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Projects
+            <svg class="dropdown-arrow" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </button>
+          <div class="dropdown-menu">
+            <a href="https://rulecatch.ai?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=dropdown-rulecatch" target="_blank" rel="noopener">
+              <img src="https://www.google.com/s2/favicons?domain=rulecatch.ai&sz=32" alt="" class="link-favicon">
+              <span class="dropdown-item-text"><span class="dropdown-item-title">RuleCatch.AI</span><span class="dropdown-item-desc">AI development analytics & rule monitoring</span></span>
+            </a>
+            <a href="https://thedecipherist.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=dropdown-thedecipherist" target="_blank" rel="noopener">
+              <img src="https://www.google.com/s2/favicons?domain=thedecipherist.com&sz=32" alt="" class="link-favicon">
+              <span class="dropdown-item-text"><span class="dropdown-item-title">TheDecipherist</span><span class="dropdown-item-desc">Personal website & blog</span></span>
+            </a>
+            <a href="https://classpresso.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=dropdown-classpresso" target="_blank" rel="noopener">
+              <img src="https://www.google.com/s2/favicons?domain=classpresso.com&sz=32" alt="" class="link-favicon">
+              <span class="dropdown-item-text"><span class="dropdown-item-title">Classpresso</span><span class="dropdown-item-desc">Post-build CSS class consolidation</span></span>
+            </a>
+            <a href="https://classmcp.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=dropdown-classmcp" target="_blank" rel="noopener">
+              <img src="https://www.google.com/s2/favicons?domain=classmcp.com&sz=32" alt="" class="link-favicon">
+              <span class="dropdown-item-text"><span class="dropdown-item-title">ClassMCP</span><span class="dropdown-item-desc">Semantic CSS class patterns for AI</span></span>
+            </a>
+            <a href="https://tersejson.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=dropdown-tersejson" target="_blank" rel="noopener">
+              <img src="https://www.google.com/s2/favicons?domain=tersejson.com&sz=32" alt="" class="link-favicon">
+              <span class="dropdown-item-text"><span class="dropdown-item-title">TerseJSON</span><span class="dropdown-item-desc">Memory-efficient JSON with lazy expansion</span></span>
+            </a>
+            <a href="https://credhopper.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=dropdown-credhopper" target="_blank" rel="noopener">
+              <img src="https://www.google.com/s2/favicons?domain=credhopper.com&sz=32" alt="" class="link-favicon">
+              <span class="dropdown-item-text"><span class="dropdown-item-title">CredHopper</span><span class="dropdown-item-desc">Credential management tool</span></span>
+            </a>
+          </div>
+        </li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- Mobile menu overlay -->
+  <div id="mobile-menu-overlay" class="mobile-menu-overlay"></div>
+
+  <!-- Mobile menu drawer -->
+  <aside id="mobile-menu" class="mobile-menu">
+    <nav id="mobile-toc" class="mobile-toc">
+      <div class="toc-header">Contents</div>
+      <a href="#features">Features</a>
+      <a href="#databases">Supported Databases</a>
+      <a href="#quick-start">Quick Start</a>
+      <a href="#api">API Reference</a>
+      <a href="#filters">Filter Syntax</a>
+      <a href="#sql-dialects">SQL Dialect Support</a>
+      <a href="#schema">Schema & Validation</a>
+      <a href="#guardrails">Guardrails & Sanitization</a>
+      <a href="#mcp">MCP Server</a>
+      <a href="#events">Events & Reconnection</a>
+      <a href="#structure">Project Structure</a>
+      <a href="#credits">Credits</a>
+    </nav>
+    <div class="mobile-projects">
+      <div class="toc-header">More Projects</div>
+      <a href="https://rulecatch.ai?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=mobile-rulecatch" target="_blank" rel="noopener"><img src="https://www.google.com/s2/favicons?domain=rulecatch.ai&sz=32" alt="" class="link-favicon">RuleCatch.AI</a>
+      <a href="https://thedecipherist.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=mobile-thedecipherist" target="_blank" rel="noopener"><img src="https://www.google.com/s2/favicons?domain=thedecipherist.com&sz=32" alt="" class="link-favicon">TheDecipherist</a>
+      <a href="https://classpresso.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=mobile-classpresso" target="_blank" rel="noopener"><img src="https://www.google.com/s2/favicons?domain=classpresso.com&sz=32" alt="" class="link-favicon">Classpresso</a>
+      <a href="https://classmcp.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=mobile-classmcp" target="_blank" rel="noopener"><img src="https://www.google.com/s2/favicons?domain=classmcp.com&sz=32" alt="" class="link-favicon">ClassMCP</a>
+      <a href="https://tersejson.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=mobile-tersejson" target="_blank" rel="noopener"><img src="https://www.google.com/s2/favicons?domain=tersejson.com&sz=32" alt="" class="link-favicon">TerseJSON</a>
+    </div>
+  </aside>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+    <div class="container hero-content">
+      <div class="hero-badge">v0.1.0 &mdash; One API, Six Databases</div>
+      <h1>The Unified Database Driver<br>for AI-First Development</h1>
+      <p class="hero-subtitle">One API for MongoDB, PostgreSQL, MySQL, MSSQL, SQLite, and Elasticsearch. Guardrails, self-correcting errors, schema discovery, and an MCP server &mdash; all included.</p>
+      <div class="hero-actions">
+        <a href="https://github.com/TheDecipherist/strictdb" target="_blank" rel="noopener" class="btn btn-primary">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+        <a href="#quick-start" class="btn btn-secondary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          npm install strictdb
+        </a>
+        <a href="#quick-start" class="btn btn-secondary">Quick Start</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <main class="container main-layout">
+    <aside id="sidebar">
+      <nav id="toc">
+        <div class="toc-header">Contents</div>
+        <a href="#features" class="active">Features</a>
+        <a href="#databases">Supported Databases</a>
+        <a href="#quick-start">Quick Start</a>
+        <a href="#api">API Reference</a>
+        <a href="#filters">Filter Syntax</a>
+        <a href="#sql-dialects">SQL Dialect Support</a>
+        <a href="#schema">Schema & Validation</a>
+        <a href="#guardrails">Guardrails & Sanitization</a>
+        <a href="#mcp">MCP Server</a>
+        <a href="#events">Events & Reconnection</a>
+        <a href="#structure">Project Structure</a>
+        <a href="#credits">Credits</a>
+      </nav>
+    </aside>
+
+    <article id="content">
+
+      <!-- Features -->
+      <section id="features">
+        <h2>Features</h2>
+        <p>Everything you need to talk to databases safely, consistently, and with AI agents in the loop.</p>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-cyan">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </div>
+            <h3>Unified API</h3>
+            <p>One interface for MongoDB, PostgreSQL, MySQL, MSSQL, SQLite, and Elasticsearch. Write once, query any backend.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-purple">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <h3>AI Guardrails</h3>
+            <p>Empty filter blocking prevents accidental <code>DELETE *</code>. Unbounded query protection enforces limits. Safe by default.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-green">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
+            <h3>Self-Correcting Errors</h3>
+            <p>Every <code>StrictDBError</code> includes a <code>fix</code> property with actionable instructions. AI agents can read the fix and retry automatically.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-blue">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
+            <h3>Schema Discovery</h3>
+            <p><code>describe()</code> lets AI agents learn your tables, columns, and types at runtime. No hardcoded schemas needed.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-amber">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <h3>MCP Server</h3>
+            <p>AI agents talk to databases via the Model Context Protocol. Install <code>strictdb-mcp</code> and connect any MCP-compatible client.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-pink">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </div>
+            <h3>Custom Sanitize Rules</h3>
+            <p>Transform, validate, or reject field values before they reach the database. Define rules once, enforce everywhere.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Supported Databases -->
+      <section id="databases">
+        <h2>Supported Databases</h2>
+        <p>StrictDB auto-detects your database from the connection URI. Install the peer dependency for your backend and you're ready to go.</p>
+
+        <div class="concept-grid">
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              MongoDB
+              <span class="version-tag">Auto-detected</span>
+            </h3>
+            <p>Driver: <code>mongodb</code><br>URI: <code>mongodb://</code> or <code>mongodb+srv://</code></p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              PostgreSQL
+              <span class="version-tag">Auto-detected</span>
+            </h3>
+            <p>Driver: <code>pg</code><br>URI: <code>postgresql://</code> or <code>postgres://</code></p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              MySQL
+              <span class="version-tag">Auto-detected</span>
+            </h3>
+            <p>Driver: <code>mysql2</code><br>URI: <code>mysql://</code></p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-purple)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              MSSQL
+              <span class="version-tag">Auto-detected</span>
+            </h3>
+            <p>Driver: <code>mssql</code><br>URI: <code>mssql://</code></p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              SQLite
+              <span class="version-tag">Auto-detected</span>
+            </h3>
+            <p>Driver: <code>better-sqlite3</code><br>URI: <code>sqlite://</code></p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-pink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Elasticsearch
+              <span class="version-tag">Auto-detected</span>
+            </h3>
+            <p>Driver: <code>@elastic/elasticsearch</code><br>URI: <code>http://</code> or <code>https://</code> (with ES detection)</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Quick Start -->
+      <section id="quick-start">
+        <h2>Quick Start</h2>
+        <p>Get up and running with StrictDB in under a minute.</p>
+
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>Install</h3>
+            <p>Install StrictDB and the peer dependency for your database.</p>
+<pre class="language-bash"><code class="language-bash"># Core package
+npm install strictdb
+
+# Add your database driver (pick one or more)
+npm install mongodb        # MongoDB
+npm install pg             # PostgreSQL
+npm install mysql2         # MySQL
+npm install mssql          # MSSQL
+npm install better-sqlite3 # SQLite
+npm install @elastic/elasticsearch # Elasticsearch</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>Connect</h3>
+            <p>StrictDB auto-detects the backend from your URI.</p>
+<pre class="language-javascript"><code class="language-javascript">import { StrictDB } from 'strictdb';
+
+// MongoDB
+const db = await StrictDB.create({ uri: 'mongodb://localhost:27017/mydb' });
+
+// PostgreSQL
+const db = await StrictDB.create({ uri: 'postgresql://user:pass@localhost:5432/mydb' });
+
+// SQLite
+const db = await StrictDB.create({ uri: 'sqlite:///path/to/db.sqlite' });</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>Query</h3>
+            <p>Same API regardless of backend. MongoDB-style filters work everywhere.</p>
+<pre class="language-javascript"><code class="language-javascript">// Find one document
+const user = await db.queryOne('users', { email: 'alice@example.com' });
+
+// Find many with filters, sorting, and pagination
+const active = await db.queryMany('users', {
+  filter: { status: 'active', age: { $gte: 18 } },
+  sort: { createdAt: -1 },
+  limit: 20,
+  skip: 0
+});
+
+// Count documents
+const total = await db.count('users', { status: 'active' });</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h3>Insert & Update</h3>
+            <p>Write operations with full receipt tracking.</p>
+<pre class="language-javascript"><code class="language-javascript">// Insert
+const receipt = await db.insertOne('users', {
+  name: 'Alice',
+  email: 'alice@example.com',
+  status: 'active'
+});
+console.log(receipt.insertedId);
+
+// Update with filter
+await db.updateOne('users',
+  { email: 'alice@example.com' },
+  { $set: { status: 'verified' } }
+);
+
+// Delete
+await db.deleteOne('users', { email: 'old@example.com' });</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- API Reference -->
+      <section id="api">
+        <h2>API Reference</h2>
+        <p>Every method available on the <code>StrictDB</code> instance. All methods return typed <code>OperationReceipt</code> objects for full auditability.</p>
+
+        <h3>Read Operations</h3>
+        <div class="commands-grid">
+          <div class="command-card">
+            <h3><code>queryOne(collection, filter)</code></h3>
+            <p class="command-desc">Find a single document matching the filter. Returns <code>null</code> if not found.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>queryMany(collection, options)</code></h3>
+            <p class="command-desc">Find multiple documents with filter, sort, limit, skip, and projection support.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>queryWithLookup(collection, options)</code></h3>
+            <p class="command-desc">Query with a related collection lookup (like SQL JOIN). Two-query approach for SQL backends.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>count(collection, filter)</code></h3>
+            <p class="command-desc">Count documents matching the filter. Returns a number.</p>
+          </div>
+        </div>
+
+        <h3>Write Operations</h3>
+        <div class="commands-grid">
+          <div class="command-card">
+            <h3><code>insertOne(collection, doc)</code></h3>
+            <p class="command-desc">Insert a single document. Returns receipt with <code>insertedId</code>.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>insertMany(collection, docs)</code></h3>
+            <p class="command-desc">Insert multiple documents in a single operation. Returns receipt with <code>insertedCount</code>.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>updateOne(collection, filter, update)</code></h3>
+            <p class="command-desc">Update a single document. Enforces single-row semantics across all SQL dialects (ctid, rowid, LIMIT 1, TOP(1)).</p>
+          </div>
+          <div class="command-card">
+            <h3><code>updateMany(collection, filter, update)</code></h3>
+            <p class="command-desc">Update all documents matching the filter. Supports <code>upsert: true</code> option.</p>
+          </div>
+        </div>
+
+        <h3>Delete & Transaction Operations</h3>
+        <div class="commands-grid">
+          <div class="command-card">
+            <h3><code>deleteOne(collection, filter)</code></h3>
+            <p class="command-desc">Delete a single document matching the filter. Single-row enforcement on all backends.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>deleteMany(collection, filter)</code></h3>
+            <p class="command-desc">Delete all documents matching the filter. Blocked by guardrails if filter is empty.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>batch(operations)</code></h3>
+            <p class="command-desc">Execute multiple operations as a batch. Each operation specifies its own collection and action.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>withTransaction(fn)</code></h3>
+            <p class="command-desc">Execute operations within a database transaction. Automatic rollback on error. Supports all dialects including MSSQL.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Filter Syntax -->
+      <section id="filters">
+        <h2>Filter Syntax</h2>
+        <p>StrictDB uses MongoDB-style filters everywhere. The filter translator converts them to SQL <code>WHERE</code> clauses or Elasticsearch Query DSL automatically.</p>
+
+        <h3>Comparison Operators</h3>
+        <div class="concept-grid">
+          <div class="concept-card">
+            <h3><code>$eq</code>, <code>$ne</code></h3>
+            <p>Equal / not equal. <code>{ status: 'active' }</code> is shorthand for <code>{ status: { $eq: 'active' } }</code>.</p>
+          </div>
+          <div class="concept-card">
+            <h3><code>$gt</code>, <code>$gte</code>, <code>$lt</code>, <code>$lte</code></h3>
+            <p>Greater than, greater or equal, less than, less or equal. Works with numbers, dates, and strings.</p>
+          </div>
+        </div>
+
+        <h3>Array & Pattern Operators</h3>
+        <div class="concept-grid">
+          <div class="concept-card">
+            <h3><code>$in</code>, <code>$nin</code></h3>
+            <p>Match any value in array / not in array. <code>{ role: { $in: ['admin', 'mod'] } }</code></p>
+          </div>
+          <div class="concept-card">
+            <h3><code>$regex</code>, <code>$exists</code>, <code>$size</code></h3>
+            <p>Pattern matching, field existence check, and array length. Regex complexity is validated to prevent ReDoS.</p>
+          </div>
+        </div>
+
+        <h3>Logical Operators</h3>
+        <div class="concept-grid">
+          <div class="concept-card">
+            <h3><code>$and</code>, <code>$or</code>, <code>$nor</code>, <code>$not</code></h3>
+            <p>Combine multiple conditions. <code>{ $or: [{ status: 'active' }, { role: 'admin' }] }</code></p>
+          </div>
+        </div>
+
+        <h3>Translation Example</h3>
+<pre class="language-javascript"><code class="language-javascript">// This MongoDB-style filter:
+const filter = {
+  status: 'active',
+  age: { $gte: 18 },
+  role: { $in: ['user', 'admin'] }
+};
+
+// Translates to PostgreSQL:
+// WHERE "status" = $1 AND "age" >= $2 AND "role" IN ($3, $4)
+
+// Translates to MySQL:
+// WHERE `status` = ? AND `age` >= ? AND `role` IN (?, ?)
+
+// Translates to MSSQL:
+// WHERE [status] = @p1 AND [age] >= @p2 AND [role] IN (@p3, @p4)
+
+// Translates to Elasticsearch Query DSL:
+// { bool: { must: [{ term: { status: 'active' } }, { range: { age: { gte: 18 } } }, ...] } }</code></pre>
+      </section>
+
+      <!-- SQL Dialect Support -->
+      <section id="sql-dialects">
+        <h2>SQL Dialect Support</h2>
+        <p>StrictDB handles the differences between SQL dialects so you don't have to. Every edge case is covered.</p>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-purple">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            </div>
+            <h3>MSSQL Pagination</h3>
+            <p><code>TOP(n)</code> for limit-only queries, <code>OFFSET FETCH</code> for skip+limit, with <code>ORDER BY (SELECT NULL)</code> fallback when no sort is specified.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-cyan">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <h3>Single-Row Semantics</h3>
+            <p><code>updateOne</code> and <code>deleteOne</code> enforce exactly one row: PostgreSQL uses <code>ctid</code>, MySQL uses <code>LIMIT 1</code>, SQLite uses <code>rowid</code>, MSSQL uses <code>TOP(1)</code>.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-green">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            </div>
+            <h3>Upsert</h3>
+            <p>UPDATE-then-INSERT pattern via <code>performUpsert()</code>. Works identically across all four SQL dialects.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-blue">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <h3>Projection Exclusion</h3>
+            <p><code>getExcludedFields()</code> and <code>stripExcludedFields()</code> handle field exclusion as post-processing, since SQL doesn't natively support it.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-amber">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h3>Transaction Support</h3>
+            <p>All dialects support transactions. MSSQL uses <code>BEGIN TRANSACTION</code> via a dedicated dialect parameter. Automatic rollback on error.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-pink">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </div>
+            <h3>Parameter Styles</h3>
+            <p>PostgreSQL uses <code>$1</code>, MySQL/SQLite use <code>?</code>, MSSQL uses <code>@p1</code>. StrictDB handles all of it transparently.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Schema & Validation -->
+      <section id="schema">
+        <h2>Schema & Validation</h2>
+        <p>Register Zod schemas and StrictDB auto-generates DDL, validates at runtime, and provides self-correcting error messages when validation fails.</p>
+
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>Register a Schema</h3>
+            <p>Define your collection schema with Zod and register it.</p>
+<pre class="language-javascript"><code class="language-javascript">import { z } from 'zod';
+
+const userSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  age: z.number().int().positive(),
+  role: z.enum(['user', 'admin', 'mod']),
+  createdAt: z.date().optional()
+});
+
+db.registerSchema('users', userSchema);</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>Auto-Generate SQL DDL</h3>
+            <p>StrictDB introspects the Zod schema and generates <code>CREATE TABLE</code> statements for your SQL dialect.</p>
+<pre class="language-sql"><code class="language-sql">-- Auto-generated for PostgreSQL:
+CREATE TABLE IF NOT EXISTS "users" (
+  "name" TEXT NOT NULL,
+  "email" TEXT NOT NULL,
+  "age" INTEGER NOT NULL,
+  "role" TEXT NOT NULL,
+  "createdAt" TIMESTAMP
+);</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>Auto-Generate ES Mappings</h3>
+            <p>For Elasticsearch, schemas become index mappings automatically.</p>
+<pre class="language-javascript"><code class="language-javascript">// Auto-generated mapping:
+{
+  properties: {
+    name: { type: 'text' },
+    email: { type: 'keyword' },
+    age: { type: 'integer' },
+    role: { type: 'keyword' },
+    createdAt: { type: 'date' }
+  }
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h3>Runtime Validation</h3>
+            <p>Documents are validated before insert/update. Failures include a <code>fix</code> property so AI agents can self-correct.</p>
+<pre class="language-javascript"><code class="language-javascript">try {
+  await db.insertOne('users', { name: '', email: 'bad' });
+} catch (err) {
+  console.log(err.fix);
+  // "Field 'name' must be at least 1 character. Field 'email' must be a valid email."
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Guardrails & Sanitization -->
+      <section id="guardrails">
+        <h2>Guardrails & Sanitization</h2>
+        <p>Safety nets that prevent common mistakes &mdash; especially important when AI agents are generating queries.</p>
+
+        <div class="concept-grid">
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-pink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              Empty Filter Protection
+            </h3>
+            <p>Destructive operations (<code>updateMany</code>, <code>deleteMany</code>) with an empty filter are blocked by default. Pass <code>confirm: true</code> to override intentionally.</p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Unbounded Query Blocking
+            </h3>
+            <p>Queries without a <code>limit</code> are blocked to prevent accidentally loading entire tables. Configurable default limit.</p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              SQL Field Validation
+            </h3>
+            <p>Column names are validated against a whitelist. Prevents SQL injection via dynamic field names from untrusted input.</p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-purple)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              ES Internal Field Blocking
+            </h3>
+            <p>Elasticsearch internal fields (starting with <code>_</code>) are blocked from user queries to prevent index corruption.</p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              Regex Complexity Validation
+            </h3>
+            <p>Regular expressions in <code>$regex</code> filters are analyzed for catastrophic backtracking patterns (ReDoS). Dangerous patterns are rejected.</p>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              Custom Sanitize Rules
+            </h3>
+            <p>Define <code>SanitizeRule</code> objects to transform, validate, or reject field values. Applied via <code>applySanitizeRules()</code> in the StrictDB pipeline before every operation.</p>
+          </div>
+        </div>
+
+<pre class="language-javascript"><code class="language-javascript">// Custom sanitize rule example
+const rules = [
+  {
+    field: 'email',
+    transform: (value) => value.toLowerCase().trim(),
+    validate: (value) => value.includes('@'),
+    message: 'Invalid email address'
+  },
+  {
+    field: 'age',
+    validate: (value) => typeof value === 'number' && value > 0 && value < 150,
+    message: 'Age must be a positive number under 150'
+  }
+];
+
+const db = await StrictDB.create({ uri, sanitizeRules: rules });</code></pre>
+      </section>
+
+      <!-- MCP Server -->
+      <section id="mcp">
+        <h2>MCP Server</h2>
+        <p>The <code>strictdb-mcp</code> package exposes StrictDB as an MCP server, letting AI agents talk to databases via standardized tools.</p>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-amber">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <h3>What It Does</h3>
+            <p>AI agents (Claude, GPT, etc.) connect via MCP and get access to database tools &mdash; query, insert, update, delete, describe &mdash; all with StrictDB's guardrails enforced.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-cyan">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            </div>
+            <h3>Install & Run</h3>
+            <p>Install globally or as a project dependency. Configure via environment variables.</p>
+          </div>
+        </div>
+
+<pre class="language-bash"><code class="language-bash"># Install
+npm install strictdb-mcp
+
+# Run (reads STRICTDB_URI from environment)
+STRICTDB_URI="postgresql://user:pass@localhost:5432/mydb" npx strictdb-mcp</code></pre>
+
+        <h3>Available MCP Tools</h3>
+        <div class="commands-grid">
+          <div class="command-card">
+            <h3><code>strictdb_query</code></h3>
+            <p class="command-desc">Query documents with filters, sorting, pagination.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>strictdb_insert</code></h3>
+            <p class="command-desc">Insert one or many documents.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>strictdb_update</code></h3>
+            <p class="command-desc">Update documents matching a filter.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>strictdb_delete</code></h3>
+            <p class="command-desc">Delete documents matching a filter (guardrails enforced).</p>
+          </div>
+          <div class="command-card">
+            <h3><code>strictdb_describe</code></h3>
+            <p class="command-desc">Discover tables, columns, and types at runtime.</p>
+          </div>
+          <div class="command-card">
+            <h3><code>strictdb_count</code></h3>
+            <p class="command-desc">Count documents matching a filter.</p>
+          </div>
+        </div>
+
+        <h3>Claude Desktop Configuration</h3>
+<pre class="language-json"><code class="language-json">{
+  "mcpServers": {
+    "strictdb": {
+      "command": "npx",
+      "args": ["strictdb-mcp"],
+      "env": {
+        "STRICTDB_URI": "postgresql://user:pass@localhost:5432/mydb"
+      }
+    }
+  }
+}</code></pre>
+      </section>
+
+      <!-- Events & Reconnection -->
+      <section id="events">
+        <h2>Events & Reconnection</h2>
+        <p>StrictDB emits typed events for connection lifecycle and includes automatic reconnection with exponential backoff.</p>
+
+        <div class="concept-grid">
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Typed Events
+            </h3>
+            <p>Listen for <code>connected</code>, <code>disconnected</code>, <code>reconnecting</code>, and <code>reconnected</code> events. Fully typed with TypeScript generics.</p>
+<pre class="language-javascript"><code class="language-javascript">db.on('connected', () => console.log('Connected'));
+db.on('disconnected', (reason) => console.log('Lost connection:', reason));
+db.on('reconnecting', (attempt) => console.log('Retry #' + attempt));
+db.on('reconnected', () => console.log('Back online'));</code></pre>
+          </div>
+
+          <div class="concept-card">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              Exponential Backoff
+            </h3>
+            <p>Automatic reconnection with configurable base delay, max delay, max retries, and jitter. Prevents thundering herd on database restarts.</p>
+<pre class="language-javascript"><code class="language-javascript">const db = await StrictDB.create({
+  uri: 'postgresql://localhost:5432/mydb',
+  reconnect: {
+    enabled: true,
+    baseDelay: 1000,   // 1s initial delay
+    maxDelay: 30000,   // 30s max delay
+    maxRetries: 10,    // give up after 10 attempts
+    jitter: true       // randomize to prevent thundering herd
+  }
+});</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Project Structure -->
+      <section id="structure">
+        <h2>Project Structure</h2>
+        <p>The StrictDB source is organized for clarity and maintainability.</p>
+
+<pre class="language-bash"><code class="language-bash">strictdb/
+├── src/
+│   ├── index.ts              # Public API entry point
+│   ├── strictdb.ts           # Main unified StrictDB class
+│   ├── types.ts              # All shared types (single import source)
+│   ├── errors.ts             # StrictDBError + backend-specific error mappers
+│   ├── filter-translator.ts  # MongoDB-style → SQL WHERE + ES Query DSL
+│   ├── events.ts             # Typed EventEmitter
+│   ├── reconnect.ts          # Exponential backoff reconnection
+│   ├── sanitize.ts           # Field validation + custom sanitize rules
+│   ├── guardrails.ts         # Empty filter protection, unbounded query blocking
+│   ├── receipts.ts           # OperationReceipt builder
+│   ├── logger.ts             # Structured operation logging
+│   ├── schema.ts             # Zod → SQL DDL + ES mappings, schema registry
+│   ├── adapters/
+│   │   ├── adapter.ts        # Adapter interface
+│   │   ├── mongo-adapter.ts  # MongoDB adapter
+│   │   ├── sql-adapter.ts    # PostgreSQL, MySQL, MSSQL, SQLite adapter
+│   │   └── elastic-adapter.ts# Elasticsearch adapter
+│   └── core/db/
+│       ├── mongo.ts          # Production MongoDB wrapper
+│       └── sql.ts            # Production SQL wrapper
+├── mcp/
+│   ├── server.ts             # MCP server entry point
+│   ├── tools.ts              # MCP tool definitions
+│   └── package.json          # strictdb-mcp package config
+├── tests/                    # 220 tests across 9 files
+├── rules/rulecatch.json      # RuleCatch rule definitions
+├── hooks/pre-commit.sh       # Git hook blocking direct driver imports
+├── package.json
+└── tsconfig.json</code></pre>
+      </section>
+
+      <!-- Credits -->
+      <section id="credits">
+        <h2>Credits</h2>
+        <p>StrictDB is built and maintained by <a href="https://thedecipherist.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=credits" target="_blank" rel="noopener">TheDecipherist</a>.</p>
+        <ul>
+          <li><strong>Version:</strong> 0.1.0</li>
+          <li><strong>License:</strong> MIT</li>
+          <li><strong>Test suite:</strong> 220 tests across 9 files (vitest)</li>
+          <li><strong>npm:</strong> <a href="https://www.npmjs.com/package/strictdb" target="_blank" rel="noopener">strictdb</a> &middot; <a href="https://www.npmjs.com/package/strictdb-mcp" target="_blank" rel="noopener">strictdb-mcp</a></li>
+          <li><strong>GitHub:</strong> <a href="https://github.com/TheDecipherist/strictdb" target="_blank" rel="noopener">TheDecipherist/strictdb</a></li>
+        </ul>
+        <p>Built with TypeScript. Zero runtime dependencies &mdash; all database drivers are peer dependencies so you only install what you need.</p>
+      </section>
+
+    </article>
+  </main>
+
+  <!-- Footer -->
+  <footer class="container">
+    <div class="footer-projects">
+      <span class="footer-label">More from TheDecipherist:</span>
+      <a href="https://rulecatch.ai?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=footer-rulecatch" target="_blank" rel="noopener"><img src="https://www.google.com/s2/favicons?domain=rulecatch.ai&sz=32" alt="" class="link-favicon">RuleCatch.AI</a>
+      <a href="https://classpresso.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=footer-classpresso" target="_blank" rel="noopener"><img src="https://www.google.com/s2/favicons?domain=classpresso.com&sz=32" alt="" class="link-favicon">Classpresso</a>
+      <a href="https://classmcp.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=footer-classmcp" target="_blank" rel="noopener"><img src="https://www.google.com/s2/favicons?domain=classmcp.com&sz=32" alt="" class="link-favicon">ClassMCP</a>
+      <a href="https://tersejson.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=footer-tersejson" target="_blank" rel="noopener"><img src="https://www.google.com/s2/favicons?domain=tersejson.com&sz=32" alt="" class="link-favicon">TerseJSON</a>
+    </div>
+    <p>&copy; 2025 <a href="https://thedecipherist.com?utm_source=github-pages&utm_medium=website&utm_campaign=strictdb&utm_content=footer-copyright" target="_blank" rel="noopener">TheDecipherist</a>. MIT License.</p>
+  </footer>
+
+  <!-- Prism.js -->
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-typescript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-sql.min.js"></script>
+
+  <!-- App JS -->
+  <script src="app.js"></script>
+</body>
+</html>
