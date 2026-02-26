@@ -68,12 +68,15 @@
     /* NAV */
     nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,10,15,.85);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
     nav .c{display:flex;align-items:center;justify-content:space-between;height:64px;max-width:1200px;margin:0 auto;padding:0 24px}
-    .logo{font-size:1.4rem;font-weight:800;background:linear-gradient(135deg,var(--emerald),var(--cyan),var(--purple),var(--orange));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;display:flex;align-items:center;text-decoration:none}
+    .logo{font-size:1.4rem;font-weight:800;background:linear-gradient(135deg,var(--emerald),var(--cyan),var(--purple),var(--orange));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-0.5px;display:flex;align-items:center;text-decoration:none}
     .logo img{margin-right:10px}
-    .nav-links{display:flex;gap:24px;align-items:center}
-    .nav-links a{color:var(--text-muted);text-decoration:none;font-size:.85rem;font-weight:500;transition:color .2s}
+    .nav-links{display:flex;gap:32px;align-items:center}
+    .nav-links a{color:var(--text-muted);text-decoration:none;font-size:.9rem;font-weight:500;transition:color .2s}
     .nav-links a:hover{color:var(--text)}
     .nav-links a.active{color:var(--cyan)}
+    .nav-cta{background:linear-gradient(135deg,var(--purple),var(--pink))!important;color:#fff!important;padding:8px 20px;border-radius:8px;font-weight:600!important;transition:opacity .2s!important}
+    .nav-cta:hover{opacity:.9}
+    .mobile-toggle{display:none;background:none;border:none;color:var(--text);font-size:1.5rem;cursor:pointer;padding:4px}
 
     /* LAYOUT */
     .page{display:grid;grid-template-columns:260px 1fr;max-width:1400px;margin:0 auto;padding-top:64px;min-height:100vh;position:relative;z-index:1}
@@ -149,6 +152,11 @@
       .sidebar{display:none}
       .content{padding:32px 20px 80px}
     }
+    @media(max-width:640px){
+      .nav-links{display:none;position:absolute;top:64px;left:0;right:0;flex-direction:column;background:rgba(10,10,15,.95);backdrop-filter:blur(20px);padding:20px 24px;gap:16px;border-bottom:1px solid var(--border)}
+      .nav-links.open{display:flex}
+      .mobile-toggle{display:block}
+    }
   </style>
   <script
     src="https://app.rybbit.io/api/script.js"
@@ -160,12 +168,16 @@
 <div class="bg-glow"><div class="orb"></div><div class="orb"></div><div class="orb"></div></div>
 
 <nav><div class="c">
-  <a href="index.html" class="logo"><img src="logo.webp" alt="" width="40" height="40">StrictDB</a>
+  <a href="index.html" class="logo"><img src="logo.webp" alt="StrictDB logo" width="56" height="56" style="vertical-align:middle;margin-right:10px;">StrictDB</a>
+  <button class="mobile-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Toggle menu">&#9776;</button>
   <div class="nav-links">
-    <a href="index.html">Home</a>
+    <a href="index.html#features">Features</a>
+    <a href="index.html#ai">AI Tools</a>
+    <a href="index.html#guardrails">Guardrails</a>
+    <a href="index.html#mcp">MCP</a>
+    <a href="index.html#compare">Compare</a>
     <a href="docs.html" class="active">Docs</a>
-    <a href="https://github.com/TheDecipherist/strictdb">GitHub</a>
-    <a href="https://www.npmjs.com/package/strictdb">npm</a>
+    <a href="https://github.com/TheDecipherist/strictdb" class="nav-cta">GitHub</a>
   </div>
 </div></nav>
 
