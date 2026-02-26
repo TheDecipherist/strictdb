@@ -1,5 +1,5 @@
 <a href="https://thedecipherist.github.io/strictdb/">
-  <img src="docs/strictDB_banner.jpg" alt="StrictDB — The Unified Database Driver for AI-First Development" width="100%">
+  <img src="docs/banner.webp" alt="StrictDB — The Unified Database Driver for AI-First Development" width="100%">
 </a>
 
 <p align="center">
