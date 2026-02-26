@@ -1,6 +1,6 @@
 {
   "name": "strictdb-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "MCP server for StrictDB — AI agents talk to any database through one unified interface",
   "main": "dist/server.js",
@@ -9,7 +9,8 @@
     "strictdb-mcp": "dist/server.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -30,7 +31,7 @@
     "url": "git+https://github.com/TheDecipherist/strictdb.git",
     "directory": "mcp"
   },
-  "homepage": "https://github.com/TheDecipherist/strictdb#readme",
+  "homepage": "https://thedecipherist.github.io/strictdb/",
   "dependencies": {
     "strictdb": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
