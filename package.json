@@ -1,0 +1,96 @@
+{
+  "name": "strictdb",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "One unified API for MongoDB, PostgreSQL, MySQL, MSSQL, SQLite, and Elasticsearch. AI-first database driver with guardrails, self-correcting errors, and schema discovery.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "AI.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheDecipherist/strictdb.git"
+  },
+  "homepage": "https://github.com/TheDecipherist/strictdb#readme",
+  "bugs": {
+    "url": "https://github.com/TheDecipherist/strictdb/issues"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "database",
+    "mongodb",
+    "postgresql",
+    "mysql",
+    "mssql",
+    "sqlite",
+    "elasticsearch",
+    "unified",
+    "ai",
+    "mcp",
+    "orm-alternative"
+  ],
+  "author": "Tim Carter Clausen",
+  "license": "MIT",
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "@elastic/elasticsearch": ">=8.0.0",
+    "better-sqlite3": ">=9.0.0",
+    "mongodb": ">=6.0.0",
+    "mssql": ">=10.0.0",
+    "mysql2": ">=3.0.0",
+    "pg": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "mongodb": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    },
+    "mysql2": {
+      "optional": true
+    },
+    "mssql": {
+      "optional": true
+    },
+    "better-sqlite3": {
+      "optional": true
+    },
+    "@elastic/elasticsearch": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@elastic/elasticsearch": "^9.3.2",
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/mssql": "^9.1.9",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "better-sqlite3": "^11.0.0",
+    "mongodb": "^7.1.0",
+    "mysql2": "^3.18.1",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

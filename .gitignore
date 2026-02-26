@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+.env.local
+!.env.example
+_ai_temp/
+.claude/
+docs/
+*.tsbuildinfo
+coverage/
+plans/

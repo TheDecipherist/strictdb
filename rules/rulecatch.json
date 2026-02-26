@@ -1,0 +1,103 @@
+{
+  "name": "strictdb-enforcement",
+  "version": "1.0.0",
+  "description": "RuleCatch rules for StrictDB — flags direct database driver imports and native query patterns",
+  "rules": [
+    {
+      "id": "no-direct-mongodb",
+      "severity": "error",
+      "pattern": "import.*from\\s+['\"]mongodb['\"]",
+      "message": "Direct MongoDB driver import detected. Use StrictDB instead.",
+      "fix": "import { StrictDB } from 'strictdb'",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-mongoose",
+      "severity": "error",
+      "pattern": "import.*from\\s+['\"]mongoose['\"]",
+      "message": "Mongoose import detected. Use StrictDB instead.",
+      "fix": "import { StrictDB } from 'strictdb'",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-direct-pg",
+      "severity": "error",
+      "pattern": "import.*from\\s+['\"]pg['\"]",
+      "message": "Direct pg driver import detected. Use StrictDB instead.",
+      "fix": "import { StrictDB } from 'strictdb'",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-sequelize",
+      "severity": "error",
+      "pattern": "import.*from\\s+['\"]sequelize['\"]",
+      "message": "Sequelize import detected. Use StrictDB instead.",
+      "fix": "import { StrictDB } from 'strictdb'",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-prisma",
+      "severity": "error",
+      "pattern": "import.*from\\s+['\"]@prisma/client['\"]",
+      "message": "Prisma import detected. Use StrictDB instead.",
+      "fix": "import { StrictDB } from 'strictdb'",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-drizzle",
+      "severity": "error",
+      "pattern": "import.*from\\s+['\"]drizzle-orm['\"]",
+      "message": "Drizzle import detected. Use StrictDB instead.",
+      "fix": "import { StrictDB } from 'strictdb'",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-direct-mysql",
+      "severity": "error",
+      "pattern": "import.*from\\s+['\"]mysql2['\"]",
+      "message": "Direct mysql2 driver import detected. Use StrictDB instead.",
+      "fix": "import { StrictDB } from 'strictdb'",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-direct-mssql",
+      "severity": "error",
+      "pattern": "import.*from\\s+['\"]mssql['\"]",
+      "message": "Direct mssql driver import detected. Use StrictDB instead.",
+      "fix": "import { StrictDB } from 'strictdb'",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-direct-elastic",
+      "severity": "error",
+      "pattern": "import.*from\\s+['\"]@elastic/elasticsearch['\"]",
+      "message": "Direct Elasticsearch client import detected. Use StrictDB instead.",
+      "fix": "import { StrictDB } from 'strictdb'",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-raw-sql-strings",
+      "severity": "warning",
+      "pattern": "\\b(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\\s+.*(FROM|INTO|SET|WHERE|TABLE)",
+      "message": "Raw SQL string detected. Use StrictDB's unified filter API instead.",
+      "fix": "db.queryMany('table', { field: value })",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-mongo-client",
+      "severity": "error",
+      "pattern": "new\\s+MongoClient",
+      "message": "Direct MongoClient instantiation detected. Use StrictDB.create() instead.",
+      "fix": "const db = await StrictDB.create({ uri: '...' })",
+      "files": ["**/*.ts", "**/*.js"]
+    },
+    {
+      "id": "no-collection-find",
+      "severity": "error",
+      "pattern": "\\.collection\\(.*\\)\\.(find|findOne|insertOne|updateOne|deleteOne)",
+      "message": "Native MongoDB collection method detected. Use StrictDB methods instead.",
+      "fix": "db.queryOne('collection', filter) or db.queryMany('collection', filter)",
+      "files": ["**/*.ts", "**/*.js"]
+    }
+  ]
+}
