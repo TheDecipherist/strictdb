@@ -13,3 +13,4 @@ MDs/
 docs_backup/
 .playwright-mcp/
 *:Zone.Identifier
+/rules
