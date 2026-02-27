@@ -96,6 +96,10 @@ Every error is a `StrictDBError` with `.code`, `.fix` (corrective action string)
 
 `mcp/` is a separate npm package (`strictdb-mcp`) with its own `package.json`. It exposes 14 MCP tools for AI agents. Set `STRICTDB_URI` env var and run the server.
 
+## Website
+
+The production website is at `https://strictdb.com/`, deployed via Dokploy from the separate repo `~/projects/strictDB-website` (GitHub: `TheDecipherist/strictDB-website`, private). It's a static site served by nginx:alpine. GitHub Pages is disabled — `strictdb.com` is the only canonical domain. The `docs/` directory in this repo is no longer used for hosting.
+
 ## Key Implementation Notes
 
 - Zod runtime introspection uses: `(schema as unknown as Record<string, unknown>)['_def']`

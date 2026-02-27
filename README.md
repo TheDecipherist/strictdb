@@ -1,5 +1,5 @@
 <a href="https://strictdb.com/">
-  <img src="docs/banner.webp" alt="StrictDB — The Unified Database Driver for AI-First Development" width="100%">
+  <img src="https://strictdb.com/banner.webp" alt="StrictDB — The Unified Database Driver for AI-First Development" width="100%">
 </a>
 
 <p align="center">
