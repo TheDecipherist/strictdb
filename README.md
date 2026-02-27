@@ -19,8 +19,32 @@ StrictDB is an AI-first database driver with built-in guardrails, self-correctin
 - **Guardrails** — blocks empty-filter deletes, unbounded queries, and other dangerous operations by default
 - **Self-correcting errors** — every error includes a `.fix` field with the exact corrective action
 - **Zero config** — auto-detects backend from URI, optional peer dependencies
+- **Stable API contract** — Drivers change. Your code doesn't. When drivers release breaking updates, StrictDB absorbs the change internally. Your queries stay identical across every version, every upgrade, every migration.
 - **Structured receipts** — every write returns an `OperationReceipt` (never void)
 - **MCP server** — 14 tools for AI agents to interact with any database through one interface
+
+## The StrictDB Contract
+
+**Drivers change. Your code doesn't.**
+
+This is why it's called **Strict**DB.
+
+StrictDB's API surface is frozen. Your code never changes — even when the drivers underneath do.
+
+- MongoDB bumps to v7 and changes their API? **StrictDB absorbs it.**
+- `pg` releases breaking changes? **StrictDB absorbs it.**
+- Elasticsearch moves from 7 to 8 with a different client? **StrictDB absorbs it.**
+- MySQL2 deprecates a method? **StrictDB absorbs it.**
+
+ORMs break on major upgrades. Prisma has migration headaches. Mongoose had breaking changes between v6 and v7. Sequelize broke between v5 and v6. Every ORM eventually forces you to rewrite something.
+
+**StrictDB's contract is different:** the translation layer evolves, your queries don't.
+
+- Change your database → change one URI string
+- Upgrade your driver → run `npm update`
+- Your application code → stays identical. Always.
+
+This is a permanent guarantee, not a version policy. StrictDB will never ship a breaking change to its public API.
 
 ## Installation
 
