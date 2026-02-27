@@ -31,7 +31,7 @@
     "url": "git+https://github.com/TheDecipherist/strictdb.git",
     "directory": "mcp"
   },
-  "homepage": "https://thedecipherist.github.io/strictdb/",
+  "homepage": "https://strictdb.com/",
   "dependencies": {
     "strictdb": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.0.0",

@@ -4,7 +4,7 @@ MCP server for [StrictDB](https://www.npmjs.com/package/strictdb) — AI agents 
 
 Connect Claude, GPT, or any MCP-compatible client to MongoDB, PostgreSQL, MySQL, MSSQL, SQLite, or Elasticsearch. StrictDB's guardrails, sanitization, and self-correcting errors are enforced on every tool call.
 
-**[Full Documentation](https://thedecipherist.github.io/strictdb/)** | **[GitHub](https://github.com/TheDecipherist/strictdb)** | **[strictdb on npm](https://www.npmjs.com/package/strictdb)**
+**[Full Documentation](https://strictdb.com/)** | **[GitHub](https://github.com/TheDecipherist/strictdb)** | **[strictdb on npm](https://www.npmjs.com/package/strictdb)**
 
 ## Install
 
@@ -138,7 +138,7 @@ All StrictDB guardrails are enforced automatically:
 ## Related
 
 - [strictdb](https://www.npmjs.com/package/strictdb) — Core library
-- [Full Documentation](https://thedecipherist.github.io/strictdb/) — Complete docs with examples
+- [Full Documentation](https://strictdb.com/) — Complete docs with examples
 - [GitHub](https://github.com/TheDecipherist/strictdb) — Source code and issues
 
 ## License
