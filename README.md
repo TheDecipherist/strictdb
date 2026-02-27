@@ -1,9 +1,9 @@
-<a href="https://thedecipherist.github.io/strictdb/">
+<a href="https://strictdb.com/">
   <img src="docs/banner.webp" alt="StrictDB — The Unified Database Driver for AI-First Development" width="100%">
 </a>
 
 <p align="center">
-  <a href="https://thedecipherist.github.io/strictdb/"><strong>View Full Documentation Website &rarr;</strong></a>
+  <a href="https://strictdb.com/"><strong>View Full Documentation Website &rarr;</strong></a>
 </p>
 
 # StrictDB
