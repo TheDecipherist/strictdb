@@ -13,6 +13,10 @@ npm run lint           # Type check only (tsc --noEmit)
 npx vitest run tests/filter-translator.test.ts   # Run a single test file
 ```
 
+## The StrictDB Contract
+
+**The public API must never change.** This is the core promise of StrictDB and the reason it's called "Strict." Method signatures, filter syntax, option shapes, return types, error codes — all frozen. When underlying drivers release breaking changes, StrictDB absorbs them internally. The consumer's code stays identical. Only the translation layer and adapter internals evolve. Never introduce a breaking change to anything exported from `src/index.ts`.
+
 ## Architecture
 
 StrictDB is a unified database driver — one API surface for MongoDB, PostgreSQL, MySQL, MSSQL, SQLite, and Elasticsearch. It is **not** an ORM. There are no models, migrations, or code generation.
