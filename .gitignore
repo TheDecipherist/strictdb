@@ -10,3 +10,6 @@ _ai_temp/
 coverage/
 plans/
 MDs/
+docs_backup/
+.playwright-mcp/
+*:Zone.Identifier
