@@ -212,7 +212,16 @@ export type StrictErrorCode =
   | 'UNKNOWN_OPERATOR'
   | 'SCHEMA_MISMATCH'
   | 'UNSUPPORTED_OPERATION'
-  | 'INTERNAL_ERROR';
+  | 'INTERNAL_ERROR'
+  | 'SQL_PARSE_ERROR'
+  | 'SQL_UNSUPPORTED'
+  | 'SQL_MODE_UNAVAILABLE'
+  | 'SQL_RAW_UNAVAILABLE'
+  | 'SQL_SUGGEST_RAW'
+  | 'SQL_NULL_COMPARISON'
+  | 'SQL_PARAM_MISMATCH'
+  | 'SQL_TRANSACTION_FAILED'
+  | 'SQL_INVALID_OBJECTID';
 
 // ─── Event Types ─────────────────────────────────────────────────────────────
 

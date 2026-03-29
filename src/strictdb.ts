@@ -57,6 +57,11 @@ import type { DatabaseAdapter } from './adapters/adapter.js';
 import { MongoAdapter } from './adapters/mongo-adapter.js';
 import { SqlAdapter } from './adapters/sql-adapter.js';
 import { ElasticAdapter } from './adapters/elastic-adapter.js';
+import { SqlEngine } from './sql/index.js';
+import type { SqlOptions, SqlMode2Result } from './sql/index.js';
+import { isTransactionBlock } from './sql/parser.js';
+import type { SqlExecutorAdapter } from './sql/executor.js';
+import type { WriteOperation } from './sql/types.js';
 
 export class StrictDB {
   private adapter: DatabaseAdapter;
@@ -378,6 +383,96 @@ export class StrictDB {
 
     this.logger.logOperation(batchReceipt);
     return batchReceipt;
+  }
+
+  // ─── SQL Mode 2 ────────────────────────────────────────────────────────────
+
+  private _sqlAdapter?: SqlExecutorAdapter;
+
+  private getSqlAdapter(): SqlExecutorAdapter {
+    if (this._sqlAdapter) return this._sqlAdapter;
+
+    const self = this;
+    this._sqlAdapter = {
+      aggregate: async (collection: string, pipeline: Record<string, unknown>[]) => {
+        if (self.backend === 'mongo') {
+          const raw = self.adapter.raw() as { queryMany<T>(collection: string, pipeline: Record<string, unknown>[], opts?: { trusted?: boolean }): Promise<T[]> };
+          if (raw?.queryMany) {
+            return raw.queryMany<Record<string, unknown>>(collection, pipeline, { trusted: true });
+          }
+        }
+        return [];
+      },
+      // Route writes through StrictDB methods — preserves guardrails, sanitize, timestamps, logging
+      bulkWrite: async (collection: string, ops: WriteOperation[]) => {
+        const startTime = Date.now();
+        let insertedCount = 0;
+        let modifiedCount = 0;
+        let deletedCount = 0;
+
+        for (const op of ops) {
+          switch (op.type) {
+            case 'insertOne':
+              if (op.document) {
+                const r = await self.insertOne(collection, op.document);
+                insertedCount += r.insertedCount;
+              }
+              break;
+            case 'insertMany':
+              if (op.documents) {
+                const r = await self.insertMany(collection, op.documents);
+                insertedCount += r.insertedCount;
+              }
+              break;
+            case 'updateOne':
+              if (op.filter && op.update) {
+                const r = await self.updateOne(collection, op.filter as StrictFilter<Record<string, unknown>>, op.update as UpdateOperators<Record<string, unknown>>);
+                modifiedCount += r.modifiedCount;
+              }
+              break;
+            case 'updateMany':
+              if (op.filter && op.update) {
+                const r = await self.updateMany(collection, op.filter as StrictFilter<Record<string, unknown>>, op.update as UpdateOperators<Record<string, unknown>>);
+                modifiedCount += r.modifiedCount;
+              }
+              break;
+            case 'deleteOne':
+              if (op.filter) {
+                const r = await self.deleteOne(collection, op.filter as StrictFilter<Record<string, unknown>>);
+                deletedCount += r.deletedCount;
+              }
+              break;
+            case 'deleteMany':
+              if (op.filter) {
+                const r = await self.deleteMany(collection, op.filter as StrictFilter<Record<string, unknown>>);
+                deletedCount += r.deletedCount;
+              }
+              break;
+          }
+        }
+
+        return createReceipt({
+          operation: 'batch',
+          collection,
+          backend: self.backend,
+          startTime,
+          insertedCount,
+          modifiedCount,
+          deletedCount,
+        });
+      },
+    };
+    return this._sqlAdapter;
+  }
+
+  async sql(sql: string, options?: SqlOptions): Promise<SqlMode2Result | OperationReceipt> {
+    // Wrap transaction blocks in a real MongoDB session when possible
+    if (isTransactionBlock(sql) && this.adapter.withTransaction) {
+      return this.withTransaction(async (tx) => {
+        return SqlEngine.execute(sql, options, tx.backend, tx.getSqlAdapter()) as Promise<SqlMode2Result>;
+      });
+    }
+    return SqlEngine.execute(sql, options, this.backend, this.getSqlAdapter());
   }
 
   // ─── Transactions ──────────────────────────────────────────────────────────

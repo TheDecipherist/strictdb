@@ -10,6 +10,10 @@ export { StrictDB } from './strictdb.js';
 // Error class
 export { StrictDBError } from './errors.js';
 
+// SQL Mode 2 types
+export type { SqlOptions, SqlMode2Result } from './sql/index.js';
+export type { ExplainPlan, SqlMode2Dialect } from './sql/types.js';
+
 // Types
 export type {
   Backend,

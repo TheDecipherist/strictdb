@@ -59,6 +59,15 @@ export const ERROR_RETRYABLE: Record<StrictErrorCode, boolean> = {
   SCHEMA_MISMATCH: false,
   UNSUPPORTED_OPERATION: false,
   INTERNAL_ERROR: false,
+  SQL_PARSE_ERROR: false,
+  SQL_UNSUPPORTED: false,
+  SQL_MODE_UNAVAILABLE: false,
+  SQL_RAW_UNAVAILABLE: false,
+  SQL_SUGGEST_RAW: false,
+  SQL_NULL_COMPARISON: false,
+  SQL_PARAM_MISMATCH: false,
+  SQL_TRANSACTION_FAILED: false,
+  SQL_INVALID_OBJECTID: false,
 };
 
 // ─── MongoDB Error Mapping ───────────────────────────────────────────────────

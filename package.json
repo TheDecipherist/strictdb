@@ -48,6 +48,7 @@
   "author": "Tim Carter Clausen",
   "license": "MIT",
   "dependencies": {
+    "node-sql-parser": "^5.4.0",
     "zod": "^3.23.0"
   },
   "peerDependencies": {
@@ -85,6 +86,7 @@
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
     "better-sqlite3": "^11.0.0",
+    "dotenv": "^17.3.1",
     "mongodb": "^7.1.0",
     "mysql2": "^3.18.1",
     "typescript": "^5.5.0",
