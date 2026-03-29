@@ -84,6 +84,8 @@ export interface WriteOperation {
   documents?: Record<string, unknown>[];
   filter?: Record<string, unknown>;
   update?: Record<string, unknown>;
+  /** Columns requested by RETURNING clause (INSERT ... RETURNING col1, col2) */
+  returning?: string[];
 }
 
 export interface ParsedStatement {

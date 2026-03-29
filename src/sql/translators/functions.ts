@@ -139,6 +139,11 @@ function translateNamedFunction(expr: Record<string, unknown>): Record<string, u
     case 'LEAST':
       return { $min: args };
 
+    // ID retrieval
+    case 'LAST_INSERT_ID':
+      // Returns a marker that the executor replaces with the actual last inserted ID
+      return { __lastInsertId: true };
+
     // Conditional
     case 'COALESCE':
     case 'IFNULL':

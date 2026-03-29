@@ -425,14 +425,26 @@ export async function count(
  * Insert a single document.
  * Wraps in bulkWrite for consistency.
  */
+export interface MongoWriteResult {
+  insertedId?: string;
+  insertedIds?: string[];
+  upsertedId?: string;
+  matchedCount?: number;
+  modifiedCount?: number;
+}
+
 export async function insertOne<T extends Document>(
   collection: string,
   doc: T
-): Promise<void> {
+): Promise<MongoWriteResult> {
   const db = await getDb();
-  await db.collection<T>(collection).bulkWrite([
+  const result = await db.collection<T>(collection).bulkWrite([
     { insertOne: { document: doc as OptionalId<T> } },
   ]);
+  const insertedId = result.insertedIds?.[0];
+  return {
+    insertedId: insertedId ? String(insertedId) : undefined,
+  };
 }
 
 /**
@@ -442,12 +454,16 @@ export async function insertOne<T extends Document>(
 export async function insertMany<T extends Document>(
   collection: string,
   docs: T[]
-): Promise<void> {
-  if (docs.length === 0) return;
+): Promise<MongoWriteResult> {
+  if (docs.length === 0) return { insertedIds: [] };
   const db = await getDb();
-  await db.collection<T>(collection).bulkWrite(
+  const result = await db.collection<T>(collection).bulkWrite(
     docs.map((doc) => ({ insertOne: { document: doc as OptionalId<T> } }))
   );
+  const ids = result.insertedIds
+    ? Object.values(result.insertedIds).map(id => String(id))
+    : [];
+  return { insertedIds: ids };
 }
 
 /**
@@ -459,11 +475,17 @@ export async function updateOne<T extends Document>(
   filter: Filter<T>,
   update: UpdateFilter<T>,
   upsert = false
-): Promise<void> {
+): Promise<MongoWriteResult> {
   const db = await getDb();
-  await db.collection<T>(collection).bulkWrite([
+  const result = await db.collection<T>(collection).bulkWrite([
     { updateOne: { filter, update, upsert } },
   ]);
+  const upsertedId = result.upsertedIds?.[0];
+  return {
+    matchedCount: result.matchedCount,
+    modifiedCount: result.modifiedCount,
+    upsertedId: upsertedId ? String(upsertedId) : undefined,
+  };
 }
 
 /**

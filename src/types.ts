@@ -104,6 +104,12 @@ export interface OperationReceipt {
   deletedCount: number;
   duration: number;
   backend: Backend;
+  /** The _id of the inserted document (insertOne only) */
+  insertedId?: string;
+  /** Array of _ids for inserted documents (insertMany only), preserves insertion order */
+  insertedIds?: string[];
+  /** The _id of the upserted document (updateOne with upsert:true, only when a new doc was created) */
+  upsertedId?: string;
 }
 
 // ─── Validation Result ───────────────────────────────────────────────────────

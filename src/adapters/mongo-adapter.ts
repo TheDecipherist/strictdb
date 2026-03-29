@@ -140,13 +140,14 @@ export class MongoAdapter implements DatabaseAdapter {
   async insertOne<T>(collection: string, doc: T): Promise<OperationReceipt> {
     const startTime = Date.now();
     try {
-      await mongo.insertOne(collection, doc as Record<string, unknown>);
+      const result = await mongo.insertOne(collection, doc as Record<string, unknown>);
       return createReceipt({
         operation: 'insertOne',
         collection,
         backend: 'mongo',
         startTime,
         insertedCount: 1,
+        insertedId: result.insertedId,
       });
     } catch (err) {
       throw mapNativeError('mongo', err, collection, 'insertOne');
@@ -156,13 +157,14 @@ export class MongoAdapter implements DatabaseAdapter {
   async insertMany<T>(collection: string, docs: T[]): Promise<OperationReceipt> {
     const startTime = Date.now();
     try {
-      await mongo.insertMany(collection, docs as Record<string, unknown>[]);
+      const result = await mongo.insertMany(collection, docs as Record<string, unknown>[]);
       return createReceipt({
         operation: 'insertMany',
         collection,
         backend: 'mongo',
         startTime,
         insertedCount: docs.length,
+        insertedIds: result.insertedIds,
       });
     } catch (err) {
       throw mapNativeError('mongo', err, collection, 'insertMany');
@@ -172,7 +174,7 @@ export class MongoAdapter implements DatabaseAdapter {
   async updateOne<T>(collection: string, filter: StrictFilter<T>, update: UpdateOperators<T>, upsert?: boolean): Promise<OperationReceipt> {
     const startTime = Date.now();
     try {
-      await mongo.updateOne(
+      const result = await mongo.updateOne(
         collection,
         filter as Record<string, unknown>,
         update as Record<string, unknown>,
@@ -183,8 +185,9 @@ export class MongoAdapter implements DatabaseAdapter {
         collection,
         backend: 'mongo',
         startTime,
-        matchedCount: 1,
-        modifiedCount: 1,
+        matchedCount: result.matchedCount ?? 1,
+        modifiedCount: result.modifiedCount ?? 1,
+        upsertedId: result.upsertedId,
       });
     } catch (err) {
       throw mapNativeError('mongo', err, collection, 'updateOne');
@@ -354,11 +357,14 @@ class MongoTransactionAdapter implements DatabaseAdapter {
   async insertOne<T>(collection: string, doc: T): Promise<OperationReceipt> {
     const startTime = Date.now();
     try {
-      await this.db.collection(collection).insertOne(
+      const result = await this.db.collection(collection).insertOne(
         doc as Record<string, unknown>,
         { session: this.session },
       );
-      return createReceipt({ operation: 'insertOne', collection, backend: 'mongo', startTime, insertedCount: 1 });
+      return createReceipt({
+        operation: 'insertOne', collection, backend: 'mongo', startTime, insertedCount: 1,
+        insertedId: result.insertedId ? String(result.insertedId) : undefined,
+      });
     } catch (err) {
       throw mapNativeError('mongo', err, collection, 'insertOne');
     }
@@ -367,11 +373,17 @@ class MongoTransactionAdapter implements DatabaseAdapter {
   async insertMany<T>(collection: string, docs: T[]): Promise<OperationReceipt> {
     const startTime = Date.now();
     try {
-      await this.db.collection(collection).insertMany(
+      const result = await this.db.collection(collection).insertMany(
         docs as Record<string, unknown>[],
         { session: this.session },
       );
-      return createReceipt({ operation: 'insertMany', collection, backend: 'mongo', startTime, insertedCount: docs.length });
+      const ids = result.insertedIds
+        ? Object.values(result.insertedIds).map(id => String(id))
+        : [];
+      return createReceipt({
+        operation: 'insertMany', collection, backend: 'mongo', startTime, insertedCount: docs.length,
+        insertedIds: ids,
+      });
     } catch (err) {
       throw mapNativeError('mongo', err, collection, 'insertMany');
     }
@@ -388,6 +400,7 @@ class MongoTransactionAdapter implements DatabaseAdapter {
       return createReceipt({
         operation: 'updateOne', collection, backend: 'mongo', startTime,
         matchedCount: result.matchedCount, modifiedCount: result.modifiedCount,
+        upsertedId: result.upsertedId ? String(result.upsertedId) : undefined,
       });
     } catch (err) {
       throw mapNativeError('mongo', err, collection, 'updateOne');

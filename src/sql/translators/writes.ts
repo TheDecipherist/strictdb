@@ -44,18 +44,23 @@ export function translateInsert(ast: Record<string, unknown>): WriteOperation[] 
     docs.push(doc);
   }
 
+  // Extract RETURNING clause if present
+  const returning = extractReturningColumns(ast);
+
   // Single insertMany for all docs (1 round-trip, not N)
   if (docs.length === 1) {
     return [{
       type: 'insertOne',
       collection: table,
       document: docs[0]!,
+      returning,
     }];
   }
   return [{
     type: 'insertMany',
     collection: table,
     documents: docs,
+    returning,
   }];
 }
 
@@ -197,4 +202,24 @@ function extractIncrementValue(value: Record<string, unknown>): number {
   const right = value['right'] as Record<string, unknown>;
   const num = right?.['value'] as number ?? 1;
   return op === '-' ? -num : num;
+}
+
+/**
+ * Extract RETURNING clause columns from INSERT AST (PostgreSQL-style).
+ * Returns undefined if no RETURNING clause present.
+ */
+function extractReturningColumns(ast: Record<string, unknown>): string[] | undefined {
+  const returning = ast['returning'] as Array<Record<string, unknown>> | undefined;
+  if (!returning || !Array.isArray(returning) || returning.length === 0) return undefined;
+
+  const columns: string[] = [];
+  for (const col of returning) {
+    const expr = col['expr'] as Record<string, unknown> | undefined;
+    if (expr?.['type'] === 'column_ref') {
+      columns.push(expr['column'] as string);
+    } else if (expr?.['type'] === 'star') {
+      columns.push('*');
+    }
+  }
+  return columns.length > 0 ? columns : undefined;
 }

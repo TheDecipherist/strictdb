@@ -16,8 +16,11 @@ export function createReceipt(opts: {
   insertedCount?: number;
   deletedCount?: number;
   success?: boolean;
+  insertedId?: string;
+  insertedIds?: string[];
+  upsertedId?: string;
 }): OperationReceipt {
-  return {
+  const receipt: OperationReceipt = {
     operation: opts.operation,
     collection: opts.collection,
     success: opts.success ?? true,
@@ -28,4 +31,11 @@ export function createReceipt(opts: {
     duration: Date.now() - opts.startTime,
     backend: opts.backend,
   };
+
+  // Only include ID fields when present (keeps receipts clean for non-applicable operations)
+  if (opts.insertedId !== undefined) receipt.insertedId = opts.insertedId;
+  if (opts.insertedIds !== undefined) receipt.insertedIds = opts.insertedIds;
+  if (opts.upsertedId !== undefined) receipt.upsertedId = opts.upsertedId;
+
+  return receipt;
 }

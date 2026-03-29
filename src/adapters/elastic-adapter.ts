@@ -238,17 +238,19 @@ export class ElasticAdapter implements DatabaseAdapter {
     const startTime = Date.now();
     try {
       const client = this.getClient();
-      await client.index({
+      const result = await client.index({
         index: collection,
         body: doc,
         refresh: 'wait_for',
       });
+      const insertedId = (result as Record<string, unknown>)['_id'] as string | undefined;
       return createReceipt({
         operation: 'insertOne',
         collection,
         backend: 'elastic',
         startTime,
         insertedCount: 1,
+        insertedId,
       });
     } catch (err) {
       throw mapNativeError('elastic', err, collection, 'insertOne');

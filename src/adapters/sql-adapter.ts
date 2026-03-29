@@ -317,13 +317,17 @@ export class SqlAdapter implements DatabaseAdapter {
     const startTime = Date.now();
     try {
       const query = buildInsertSQL(collection, doc as Record<string, unknown>, this.dialect);
-      await sql.execute(query.sql, query.values);
+      // For pg, append RETURNING id to get the inserted row's ID
+      const sqlStr = this.dialect === 'pg' ? `${query.sql} RETURNING id` : query.sql;
+      const result = await sql.execute(sqlStr, query.values);
+      const insertedId = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
       return createReceipt({
         operation: 'insertOne',
         collection,
         backend: 'sql',
         startTime,
         insertedCount: 1,
+        insertedId,
       });
     } catch (err) {
       throw mapNativeError('sql', err, collection, 'insertOne');
@@ -602,8 +606,10 @@ class SqlTransactionAdapter implements DatabaseAdapter {
     const startTime = Date.now();
     try {
       const query = buildInsertSQL(collection, doc as Record<string, unknown>, this.dialect);
-      await this.client.query(query.sql, query.values);
-      return createReceipt({ operation: 'insertOne', collection, backend: 'sql', startTime, insertedCount: 1 });
+      const sqlStr = this.dialect === 'pg' ? `${query.sql} RETURNING id` : query.sql;
+      const result = await this.client.query(sqlStr, query.values);
+      const insertedId = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+      return createReceipt({ operation: 'insertOne', collection, backend: 'sql', startTime, insertedCount: 1, insertedId });
     } catch (err) {
       throw mapNativeError('sql', err, collection, 'insertOne');
     }
