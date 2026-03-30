@@ -12,6 +12,7 @@ import type {
   ConnectionStatus,
   Driver,
   LookupOptions,
+  NativeBulkWriteOp,
   OperationReceipt,
   QueryOptions,
   StrictDBConfig,
@@ -244,6 +245,49 @@ export class MongoAdapter implements DatabaseAdapter {
       });
     } catch (err) {
       throw mapNativeError('mongo', err, collection, 'deleteMany');
+    }
+  }
+
+  // ─── Native Pipeline — Zero overhead passthrough ─────────────────────────
+
+  async aggregate<T>(collection: string, pipeline: Record<string, unknown>[], options?: { allowDiskUse?: boolean }): Promise<T[]> {
+    try {
+      const db = await mongo.getDb();
+      return await db.collection(collection)
+        .aggregate<T & Record<string, unknown>>(pipeline, { allowDiskUse: options?.allowDiskUse })
+        .toArray() as T[];
+    } catch (err) {
+      throw mapNativeError('mongo', err, collection, 'aggregate');
+    }
+  }
+
+  async nativeBulkWrite(collection: string, operations: NativeBulkWriteOp[]): Promise<{
+    insertedCount: number;
+    modifiedCount: number;
+    deletedCount: number;
+    insertedIds?: string[];
+    upsertedIds?: string[];
+  }> {
+    try {
+      const db = await mongo.getDb();
+      const result = await db.collection(collection).bulkWrite(
+        operations as Parameters<ReturnType<typeof db.collection>['bulkWrite']>[0],
+      );
+      const insertedIds = result.insertedIds
+        ? Object.values(result.insertedIds).map(id => String(id))
+        : undefined;
+      const upsertedIds = result.upsertedIds
+        ? Object.values(result.upsertedIds).map(id => String(id))
+        : undefined;
+      return {
+        insertedCount: result.insertedCount,
+        modifiedCount: result.modifiedCount,
+        deletedCount: result.deletedCount,
+        insertedIds: insertedIds && insertedIds.length > 0 ? insertedIds : undefined,
+        upsertedIds: upsertedIds && upsertedIds.length > 0 ? upsertedIds : undefined,
+      };
+    } catch (err) {
+      throw mapNativeError('mongo', err, collection, 'bulkWrite');
     }
   }
 

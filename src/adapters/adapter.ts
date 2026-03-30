@@ -11,6 +11,7 @@ import type {
   ConfirmOptions,
   Driver,
   LookupOptions,
+  NativeBulkWriteOp,
   OperationReceipt,
   QueryOptions,
   StrictFilter,
@@ -51,6 +52,16 @@ export interface DatabaseAdapter {
 
   // ─── Transactions ────────────────────────────────────────────────
   withTransaction?<T>(fn: (txAdapter: DatabaseAdapter) => Promise<T>): Promise<T>;
+
+  // ─── Native Pipeline ──────────────────────────────────────────────
+  aggregate?<T>(collection: string, pipeline: Record<string, unknown>[], options?: { allowDiskUse?: boolean }): Promise<T[]>;
+  nativeBulkWrite?(collection: string, operations: NativeBulkWriteOp[]): Promise<{
+    insertedCount: number;
+    modifiedCount: number;
+    deletedCount: number;
+    insertedIds?: string[];
+    upsertedIds?: string[];
+  }>;
 
   // ─── Raw Access ───────────────────────────────────────────────────
   raw(): unknown;

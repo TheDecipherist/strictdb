@@ -71,6 +71,74 @@ export function checkGuardrails(
   }
 }
 
+/**
+ * Check if an aggregate pipeline is safe to execute.
+ * Blocks pipelines without $limit (unless they have $count, $group, $merge, $out).
+ */
+export function checkPipelineGuardrails(
+  ctx: GuardrailContext,
+  collection: string,
+  pipeline: Record<string, unknown>[],
+): void {
+  if (!ctx.enabled) return;
+
+  const hasLimit = pipeline.some(s => '$limit' in s);
+  const hasCount = pipeline.some(s => '$count' in s);
+  const hasGroup = pipeline.some(s => '$group' in s);
+  const hasMerge = pipeline.some(s => '$merge' in s || '$out' in s);
+
+  if (!hasLimit && !hasCount && !hasGroup && !hasMerge) {
+    emitAndThrow(ctx, collection, 'aggregate',
+      `aggregate pipeline without $limit could return unbounded results from ${collection}.`,
+      `Add a { $limit: N } stage to your pipeline, or use $group/$count for bounded aggregations.`,
+    );
+  }
+}
+
+/**
+ * Check bulkWrite operations for dangerous patterns.
+ */
+export function checkBulkWriteGuardrails(
+  ctx: GuardrailContext,
+  collection: string,
+  operations: Array<Record<string, unknown>>,
+): void {
+  if (!ctx.enabled) return;
+
+  for (const op of operations) {
+    if (op['deleteMany']) {
+      const del = op['deleteMany'] as Record<string, unknown>;
+      const filter = del['filter'] as Record<string, unknown> | undefined;
+      if (!filter || Object.keys(filter).length === 0) {
+        emitAndThrow(ctx, collection, 'bulkWrite',
+          'bulkWrite contains deleteMany with empty filter — would delete all documents.',
+          `Add a filter to the deleteMany operation, or use { confirm: 'DELETE_ALL' } on the regular deleteMany method.`,
+        );
+      }
+    }
+    if (op['deleteOne']) {
+      const del = op['deleteOne'] as Record<string, unknown>;
+      const filter = del['filter'] as Record<string, unknown> | undefined;
+      if (!filter || Object.keys(filter).length === 0) {
+        emitAndThrow(ctx, collection, 'bulkWrite',
+          'bulkWrite contains deleteOne with empty filter — would delete an arbitrary document.',
+          `Add a filter to identify the document to delete.`,
+        );
+      }
+    }
+    if (op['updateMany']) {
+      const upd = op['updateMany'] as Record<string, unknown>;
+      const filter = upd['filter'] as Record<string, unknown> | undefined;
+      if (!filter || Object.keys(filter).length === 0) {
+        emitAndThrow(ctx, collection, 'bulkWrite',
+          'bulkWrite contains updateMany with empty filter — would update all documents.',
+          `Add a filter to the updateMany operation.`,
+        );
+      }
+    }
+  }
+}
+
 function isEmptyFilter(filter: Record<string, unknown>): boolean {
   return !filter || Object.keys(filter).length === 0;
 }

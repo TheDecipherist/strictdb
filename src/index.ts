@@ -16,6 +16,7 @@ export type { ExplainPlan, SqlMode2Dialect } from './sql/types.js';
 
 // Types
 export type {
+  AggregateOptions,
   Backend,
   BatchOperation,
   CollectionDescription,
@@ -44,6 +45,7 @@ export type {
   StrictErrorCode,
   StrictFilter,
   TimestampFieldNames,
+  NativeBulkWriteOp,
   UpdateOperators,
   ValidationResult,
 } from './types.js';

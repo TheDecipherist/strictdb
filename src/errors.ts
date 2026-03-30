@@ -58,6 +58,7 @@ export const ERROR_RETRYABLE: Record<StrictErrorCode, boolean> = {
   UNKNOWN_OPERATOR: false,
   SCHEMA_MISMATCH: false,
   UNSUPPORTED_OPERATION: false,
+  PIPELINE_STAGE_UNSUPPORTED: false,
   INTERNAL_ERROR: false,
   SQL_PARSE_ERROR: false,
   SQL_UNSUPPORTED: false,

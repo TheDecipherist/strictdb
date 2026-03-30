@@ -12,6 +12,7 @@ import type {
   ConnectionStatus,
   Driver,
   LookupOptions,
+  NativeBulkWriteOp,
   OperationReceipt,
   QueryOptions,
   StrictDBConfig,
@@ -26,6 +27,7 @@ import {
   translateToElastic,
   translateSortToElastic,
   translateUpdateToElastic,
+  translatePipelineToElastic,
 } from '../filter-translator.js';
 import { validateIndexName } from '../sanitize.js';
 
@@ -407,6 +409,168 @@ export class ElasticAdapter implements DatabaseAdapter {
     } catch (err) {
       throw mapNativeError('elastic', err, collection, 'deleteMany');
     }
+  }
+
+  async aggregate<T>(collection: string, pipeline: Record<string, unknown>[]): Promise<T[]> {
+    validateIndexName(collection);
+    try {
+      const client = this.getClient();
+      const { body, countOnly } = translatePipelineToElastic(pipeline);
+
+      if (countOnly) {
+        const countField = (body['_countField'] as string | undefined) ?? 'count';
+        const queryBody: Record<string, unknown> = {};
+        if (body['query']) queryBody['query'] = body['query'];
+        const result = await client.count({ index: collection, body: queryBody });
+        return [{ [countField]: (result['count'] as number) ?? 0 }] as T[];
+      }
+
+      // Remove internal _countField if present
+      const searchBody = { ...body };
+      delete searchBody['_countField'];
+
+      const result = await client.search({ index: collection, body: searchBody });
+
+      // If aggregations are present, return agg buckets instead of hits
+      if (searchBody['aggs']) {
+        const aggResult = result['aggregations'] as Record<string, unknown> | undefined;
+        if (aggResult) {
+          // _group terms agg → return buckets flattened
+          if (aggResult['_group']) {
+            const groupAgg = aggResult['_group'] as Record<string, unknown>;
+            const buckets = (groupAgg['buckets'] as Array<Record<string, unknown>>) ?? [];
+            return buckets.map(bucket => {
+              const row: Record<string, unknown> = { _id: bucket['key'], doc_count: bucket['doc_count'] };
+              for (const [k, v] of Object.entries(bucket)) {
+                if (k === 'key' || k === 'doc_count' || k === 'key_as_string') continue;
+                const aggVal = v as Record<string, unknown>;
+                row[k] = aggVal['value'] ?? aggVal['doc_count'];
+              }
+              return row;
+            }) as T[];
+          }
+          // Global metric aggs → return single object
+          const row: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(aggResult)) {
+            const aggVal = v as Record<string, unknown>;
+            row[k] = aggVal['value'] ?? aggVal['doc_count'];
+          }
+          return [row] as T[];
+        }
+        return [];
+      }
+
+      const hits = (result['hits'] as Record<string, unknown>)?.['hits'] as Array<Record<string, unknown>> | undefined;
+      if (!hits) return [];
+      return hits.map(h => ({ _id: h['_id'] as string, ...(h['_source'] as Record<string, unknown>) })) as T[];
+    } catch (err) {
+      if (err instanceof StrictDBError) throw err;
+      throw mapNativeError('elastic', err, collection, 'aggregate');
+    }
+  }
+
+  async nativeBulkWrite(collection: string, operations: NativeBulkWriteOp[]): Promise<{
+    insertedCount: number;
+    modifiedCount: number;
+    deletedCount: number;
+    insertedIds?: string[];
+    upsertedIds?: string[];
+  }> {
+    validateIndexName(collection);
+    const client = this.getClient();
+    const bulkOps: Record<string, unknown>[] = [];
+
+    for (const op of operations) {
+      if ('insertOne' in op) {
+        bulkOps.push({ index: { _index: collection } });
+        bulkOps.push(op.insertOne.document);
+
+      } else if ('updateOne' in op) {
+        const { filter, update, upsert } = op.updateOne;
+        const query = translateToElastic(filter);
+        const script = translateUpdateToElastic(update as UpdateOperators<Record<string, unknown>>);
+        // updateByQuery doesn't fit into bulk API — execute separately
+        await client.updateByQuery({
+          index: collection,
+          body: {
+            query,
+            script: { source: script.source, params: script.params, lang: 'painless' },
+          },
+          max_docs: 1,
+          ...(upsert ? {} : {}),
+          refresh: true,
+        });
+
+      } else if ('updateMany' in op) {
+        const { filter, update } = op.updateMany;
+        const query = translateToElastic(filter);
+        const script = translateUpdateToElastic(update as UpdateOperators<Record<string, unknown>>);
+        await client.updateByQuery({
+          index: collection,
+          body: {
+            query,
+            script: { source: script.source, params: script.params, lang: 'painless' },
+          },
+          refresh: true,
+        });
+
+      } else if ('deleteOne' in op) {
+        const { filter } = op.deleteOne;
+        const query = translateToElastic(filter);
+        await client.deleteByQuery({
+          index: collection,
+          body: { query },
+          max_docs: 1,
+          refresh: true,
+        });
+
+      } else if ('deleteMany' in op) {
+        const { filter } = op.deleteMany;
+        const query = translateToElastic(filter);
+        await client.deleteByQuery({
+          index: collection,
+          body: { query },
+          refresh: true,
+        });
+
+      } else if ('replaceOne' in op) {
+        const { filter, replacement } = op.replaceOne;
+        // Delete then index
+        const query = translateToElastic(filter);
+        await client.deleteByQuery({
+          index: collection,
+          body: { query },
+          max_docs: 1,
+          refresh: true,
+        });
+        bulkOps.push({ index: { _index: collection } });
+        bulkOps.push(replacement);
+      }
+    }
+
+    // Execute any accumulated bulk insert/index operations
+    let insertedCount = 0;
+    const insertedIds: string[] = [];
+
+    if (bulkOps.length > 0) {
+      const result = await client.bulk({ body: bulkOps, refresh: 'wait_for' });
+      const items = (result['items'] as Array<Record<string, unknown>>) ?? [];
+      for (const item of items) {
+        const indexOp = item['index'] as Record<string, unknown> | undefined;
+        if (indexOp && (indexOp['result'] === 'created' || indexOp['status'] === 201)) {
+          insertedCount++;
+          const id = indexOp['_id'] as string | undefined;
+          if (id) insertedIds.push(id);
+        }
+      }
+    }
+
+    return {
+      insertedCount,
+      modifiedCount: 0, // ES updateByQuery doesn't return per-op counts here
+      deletedCount: 0,
+      insertedIds: insertedIds.length > 0 ? insertedIds : undefined,
+    };
   }
 
   async withTransaction<T>(_fn: (txAdapter: DatabaseAdapter) => Promise<T>): Promise<T> {

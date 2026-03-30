@@ -12,6 +12,7 @@ import type {
   ConnectionStatus,
   Driver,
   LookupOptions,
+  NativeBulkWriteOp,
   OperationReceipt,
   QueryOptions,
   SqlDialect,
@@ -19,7 +20,7 @@ import type {
   StrictFilter,
   UpdateOperators,
 } from '../types.js';
-import { mapNativeError } from '../errors.js';
+import { mapNativeError, StrictDBError } from '../errors.js';
 import { createReceipt } from '../receipts.js';
 import type { StrictDBEventEmitter } from '../events.js';
 import { ReconnectManager } from '../reconnect.js';
@@ -32,6 +33,7 @@ import {
   buildDeleteSQL,
   buildCountSQL,
   translateToSQL,
+  translatePipelineToSQL,
   getExcludedFields,
   quoteIdentifier,
 } from '../filter-translator.js';
@@ -449,6 +451,120 @@ export class SqlAdapter implements DatabaseAdapter {
     }
   }
 
+  async aggregate<T>(collection: string, pipeline: Record<string, unknown>[]): Promise<T[]> {
+    try {
+      const { sql: sqlStr, values } = translatePipelineToSQL(collection, pipeline, this.dialect);
+      const result = await sql.execute(sqlStr, values);
+      return (result.rows ?? []) as T[];
+    } catch (err) {
+      if (err instanceof StrictDBError) throw err;
+      throw mapNativeError('sql', err, collection, 'aggregate');
+    }
+  }
+
+  async nativeBulkWrite(collection: string, operations: NativeBulkWriteOp[]): Promise<{
+    insertedCount: number;
+    modifiedCount: number;
+    deletedCount: number;
+    insertedIds?: string[];
+    upsertedIds?: string[];
+  }> {
+    let insertedCount = 0;
+    let modifiedCount = 0;
+    let deletedCount = 0;
+    const insertedIds: string[] = [];
+    const upsertedIds: string[] = [];
+
+    for (const op of operations) {
+      if ('insertOne' in op) {
+        const query = buildInsertSQL(collection, op.insertOne.document, this.dialect);
+        const sqlStr = this.dialect === 'pg' ? `${query.sql} RETURNING id` : query.sql;
+        const result = await sql.execute(sqlStr, query.values);
+        insertedCount++;
+        const id = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+        if (id) insertedIds.push(id);
+
+      } else if ('updateOne' in op) {
+        const { filter, update, upsert } = op.updateOne;
+        const updateOps = update as UpdateOperators<Record<string, unknown>>;
+        if (upsert) {
+          const execFn: ExecFn = (s, p) => sql.getPool().query(s, p);
+          const { rowCount, inserted } = await performUpsert(execFn, collection, filter, updateOps, this.dialect);
+          if (inserted) { insertedCount++; } else { modifiedCount += rowCount; }
+        } else {
+          const query = buildUpdateSQL(collection, filter, updateOps, this.dialect);
+          const where = translateToSQL(filter, this.dialect);
+          const limitedSql = limitUpdateOne(query.sql, collection, where.clause, this.dialect);
+          const result = await sql.execute(limitedSql, query.values);
+          modifiedCount += result.rowCount;
+        }
+
+      } else if ('updateMany' in op) {
+        const { filter, update } = op.updateMany;
+        const query = buildUpdateSQL(collection, filter, update as UpdateOperators<Record<string, unknown>>, this.dialect);
+        const result = await sql.execute(query.sql, query.values);
+        modifiedCount += result.rowCount;
+
+      } else if ('deleteOne' in op) {
+        const { filter } = op.deleteOne;
+        const query = buildDeleteSQL(collection, filter, this.dialect);
+        const where = translateToSQL(filter, this.dialect);
+        const limitedSql = limitDeleteOne(query.sql, collection, where.clause, this.dialect);
+        const result = await sql.execute(limitedSql, query.values);
+        deletedCount += result.rowCount;
+
+      } else if ('deleteMany' in op) {
+        const { filter } = op.deleteMany;
+        const query = buildDeleteSQL(collection, filter, this.dialect);
+        const result = await sql.execute(query.sql, query.values);
+        deletedCount += result.rowCount;
+
+      } else if ('replaceOne' in op) {
+        const { filter, replacement, upsert } = op.replaceOne;
+        // replaceOne: delete + insert (or upsert)
+        if (upsert) {
+          // Check if exists
+          const countQuery = buildCountSQL(collection, filter, this.dialect);
+          const countResult = await sql.queryOne<{ count: string | number }>(countQuery.sql, countQuery.values);
+          const cnt = Number(countResult?.count ?? 0);
+          if (cnt > 0) {
+            // Delete the matched row and re-insert
+            const delQuery = buildDeleteSQL(collection, filter, this.dialect);
+            const where = translateToSQL(filter, this.dialect);
+            const limitedDelSql = limitDeleteOne(delQuery.sql, collection, where.clause, this.dialect);
+            await sql.execute(limitedDelSql, delQuery.values);
+            const insQuery = buildInsertSQL(collection, replacement, this.dialect);
+            await sql.execute(insQuery.sql, insQuery.values);
+            modifiedCount++;
+          } else {
+            const insQuery = buildInsertSQL(collection, replacement, this.dialect);
+            await sql.execute(insQuery.sql, insQuery.values);
+            insertedCount++;
+            upsertedIds.push('');
+          }
+        } else {
+          const delQuery = buildDeleteSQL(collection, filter, this.dialect);
+          const where = translateToSQL(filter, this.dialect);
+          const limitedDelSql = limitDeleteOne(delQuery.sql, collection, where.clause, this.dialect);
+          const delResult = await sql.execute(limitedDelSql, delQuery.values);
+          if (delResult.rowCount > 0) {
+            const insQuery = buildInsertSQL(collection, replacement, this.dialect);
+            await sql.execute(insQuery.sql, insQuery.values);
+            modifiedCount++;
+          }
+        }
+      }
+    }
+
+    return {
+      insertedCount,
+      modifiedCount,
+      deletedCount,
+      insertedIds: insertedIds.length > 0 ? insertedIds : undefined,
+      upsertedIds: upsertedIds.length > 0 ? upsertedIds : undefined,
+    };
+  }
+
   async withTransaction<T>(fn: (txAdapter: DatabaseAdapter) => Promise<T>): Promise<T> {
     return sql.withTransaction(async (client) => {
       const txAdapter = new SqlTransactionAdapter(client, this.dialect, this.driver);
@@ -699,6 +815,97 @@ class SqlTransactionAdapter implements DatabaseAdapter {
     } catch (err) {
       throw mapNativeError('sql', err, collection, 'deleteMany');
     }
+  }
+
+  async aggregate<T>(collection: string, pipeline: Record<string, unknown>[]): Promise<T[]> {
+    try {
+      const { sql: sqlStr, values } = translatePipelineToSQL(collection, pipeline, this.dialect);
+      const result = await this.client.query(sqlStr, values);
+      return (result.rows ?? []) as T[];
+    } catch (err) {
+      if (err instanceof StrictDBError) throw err;
+      throw mapNativeError('sql', err, collection, 'aggregate');
+    }
+  }
+
+  async nativeBulkWrite(collection: string, operations: NativeBulkWriteOp[]): Promise<{
+    insertedCount: number;
+    modifiedCount: number;
+    deletedCount: number;
+    insertedIds?: string[];
+    upsertedIds?: string[];
+  }> {
+    const execFn: ExecFn = (s, p) => this.client.query(s, p);
+    let insertedCount = 0;
+    let modifiedCount = 0;
+    let deletedCount = 0;
+    const insertedIds: string[] = [];
+    const upsertedIds: string[] = [];
+
+    for (const op of operations) {
+      if ('insertOne' in op) {
+        const query = buildInsertSQL(collection, op.insertOne.document, this.dialect);
+        const sqlStr = this.dialect === 'pg' ? `${query.sql} RETURNING id` : query.sql;
+        const result = await this.client.query(sqlStr, query.values);
+        insertedCount++;
+        const id = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+        if (id) insertedIds.push(id);
+
+      } else if ('updateOne' in op) {
+        const { filter, update, upsert } = op.updateOne;
+        const updateOps = update as UpdateOperators<Record<string, unknown>>;
+        if (upsert) {
+          const { rowCount, inserted } = await performUpsert(execFn, collection, filter, updateOps, this.dialect);
+          if (inserted) { insertedCount++; } else { modifiedCount += rowCount; }
+        } else {
+          const query = buildUpdateSQL(collection, filter, updateOps, this.dialect);
+          const where = translateToSQL(filter, this.dialect);
+          const limitedSql = limitUpdateOne(query.sql, collection, where.clause, this.dialect);
+          const result = await this.client.query(limitedSql, query.values);
+          modifiedCount += result.rowCount;
+        }
+
+      } else if ('updateMany' in op) {
+        const { filter, update } = op.updateMany;
+        const query = buildUpdateSQL(collection, filter, update as UpdateOperators<Record<string, unknown>>, this.dialect);
+        const result = await this.client.query(query.sql, query.values);
+        modifiedCount += result.rowCount;
+
+      } else if ('deleteOne' in op) {
+        const { filter } = op.deleteOne;
+        const query = buildDeleteSQL(collection, filter, this.dialect);
+        const where = translateToSQL(filter, this.dialect);
+        const limitedSql = limitDeleteOne(query.sql, collection, where.clause, this.dialect);
+        const result = await this.client.query(limitedSql, query.values);
+        deletedCount += result.rowCount;
+
+      } else if ('deleteMany' in op) {
+        const { filter } = op.deleteMany;
+        const query = buildDeleteSQL(collection, filter, this.dialect);
+        const result = await this.client.query(query.sql, query.values);
+        deletedCount += result.rowCount;
+
+      } else if ('replaceOne' in op) {
+        const { filter, replacement } = op.replaceOne;
+        const delQuery = buildDeleteSQL(collection, filter, this.dialect);
+        const where = translateToSQL(filter, this.dialect);
+        const limitedDelSql = limitDeleteOne(delQuery.sql, collection, where.clause, this.dialect);
+        const delResult = await this.client.query(limitedDelSql, delQuery.values);
+        if (delResult.rowCount > 0) {
+          const insQuery = buildInsertSQL(collection, replacement, this.dialect);
+          await this.client.query(insQuery.sql, insQuery.values);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return {
+      insertedCount,
+      modifiedCount,
+      deletedCount,
+      insertedIds: insertedIds.length > 0 ? insertedIds : undefined,
+      upsertedIds: upsertedIds.length > 0 ? upsertedIds : undefined,
+    };
   }
 
   raw(): unknown { return this.client; }

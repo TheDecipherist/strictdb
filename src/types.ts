@@ -192,6 +192,25 @@ export interface CollectionSchema<T = unknown> {
   indexes?: IndexDefinition[];
 }
 
+// ─── Aggregate Options ──────────────────────────────────────────────────────
+
+export interface AggregateOptions {
+  /** Return execution plan alongside results */
+  explain?: boolean;
+  /** MongoDB: allow spilling to disk for large sorts */
+  allowDiskUse?: boolean;
+}
+
+// ─── Native BulkWrite Operations (MongoDB format) ──────────────────────────
+
+export type NativeBulkWriteOp =
+  | { insertOne: { document: Record<string, unknown> } }
+  | { updateOne: { filter: Record<string, unknown>; update: Record<string, unknown>; upsert?: boolean } }
+  | { updateMany: { filter: Record<string, unknown>; update: Record<string, unknown> } }
+  | { deleteOne: { filter: Record<string, unknown> } }
+  | { deleteMany: { filter: Record<string, unknown> } }
+  | { replaceOne: { filter: Record<string, unknown>; replacement: Record<string, unknown>; upsert?: boolean } };
+
 // ─── Batch Operations ────────────────────────────────────────────────────────
 
 export type BatchOperation =
@@ -218,6 +237,7 @@ export type StrictErrorCode =
   | 'UNKNOWN_OPERATOR'
   | 'SCHEMA_MISMATCH'
   | 'UNSUPPORTED_OPERATION'
+  | 'PIPELINE_STAGE_UNSUPPORTED'
   | 'INTERNAL_ERROR'
   | 'SQL_PARSE_ERROR'
   | 'SQL_UNSUPPORTED'

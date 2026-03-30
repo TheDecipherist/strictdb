@@ -15,6 +15,7 @@
  */
 
 import type {
+  AggregateOptions,
   Backend,
   BatchOperation,
   CollectionDescription,
@@ -24,6 +25,7 @@ import type {
   ExplainResult,
   IndexDefinition,
   LookupOptions,
+  NativeBulkWriteOp,
   OperationReceipt,
   QueryOptions,
   SanitizeRule,
@@ -36,7 +38,7 @@ import type {
 import { StrictDBError } from './errors.js';
 import { StrictDBEventEmitter } from './events.js';
 import { StrictDBLogger } from './logger.js';
-import { checkGuardrails } from './guardrails.js';
+import { checkGuardrails, checkPipelineGuardrails, checkBulkWriteGuardrails } from './guardrails.js';
 import { sanitizeFilter, applySanitizeRules } from './sanitize.js';
 import {
   registerCollection,
@@ -473,6 +475,106 @@ export class StrictDB {
       });
     }
     return SqlEngine.execute(sql, options, this.backend, this.getSqlAdapter());
+  }
+
+  // ─── Native Pipeline API ───────────────────────────────────────────────────
+
+  /**
+   * Execute a native MongoDB aggregate pipeline.
+   * On MongoDB: zero-overhead passthrough — pipeline goes straight to the driver.
+   * On SQL/ES: pipeline stages are translated to the backend's query language.
+   */
+  async aggregate<T = Record<string, unknown>>(
+    collection: string,
+    pipeline: Record<string, unknown>[],
+    options?: AggregateOptions,
+  ): Promise<T[]> {
+    // Guardrails
+    if (this.guardrailsEnabled) {
+      checkPipelineGuardrails(
+        { enabled: true, emitter: this.emitter },
+        collection,
+        pipeline,
+      );
+    }
+
+    const startTime = Date.now();
+
+    if (!this.adapter.aggregate) {
+      throw new StrictDBError({
+        code: 'UNSUPPORTED_OPERATION',
+        message: `aggregate() is not supported for the ${this.backend} backend.`,
+        fix: 'Use queryMany() with filters instead, or connect to MongoDB for full pipeline support.',
+        backend: this.backend,
+      });
+    }
+
+    const results = await this.adapter.aggregate<T>(collection, pipeline, {
+      allowDiskUse: options?.allowDiskUse,
+    });
+
+    // Log
+    const duration = Date.now() - startTime;
+    this.emitter.emit('operation', {
+      collection,
+      operation: 'aggregate',
+      durationMs: duration,
+      receipt: createReceipt({
+        operation: 'batch',
+        collection,
+        backend: this.backend,
+        startTime,
+      }),
+    });
+
+    return results;
+  }
+
+  /**
+   * Execute native MongoDB-format bulk write operations.
+   * Accepts the exact MongoDB bulkWrite format.
+   * On MongoDB: zero-overhead passthrough.
+   * On SQL/ES: operations translated to the backend's write format.
+   */
+  async nativeBulkWrite(
+    collection: string,
+    operations: NativeBulkWriteOp[],
+  ): Promise<OperationReceipt> {
+    // Guardrails
+    if (this.guardrailsEnabled) {
+      checkBulkWriteGuardrails(
+        { enabled: true, emitter: this.emitter },
+        collection,
+        operations as Record<string, unknown>[],
+      );
+    }
+
+    const startTime = Date.now();
+
+    if (!this.adapter.nativeBulkWrite) {
+      throw new StrictDBError({
+        code: 'UNSUPPORTED_OPERATION',
+        message: `nativeBulkWrite() is not supported for the ${this.backend} backend.`,
+        fix: 'Use db.batch() with StrictDB operations instead.',
+        backend: this.backend,
+      });
+    }
+
+    const result = await this.adapter.nativeBulkWrite(collection, operations);
+
+    const receipt = createReceipt({
+      operation: 'batch',
+      collection,
+      backend: this.backend,
+      startTime,
+      insertedCount: result.insertedCount,
+      modifiedCount: result.modifiedCount,
+      deletedCount: result.deletedCount,
+      insertedIds: result.insertedIds,
+    });
+
+    this.logger.logOperation(receipt);
+    return receipt;
   }
 
   // ─── Transactions ──────────────────────────────────────────────────────────
