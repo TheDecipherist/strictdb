@@ -15,6 +15,8 @@ StrictDB is an AI-first database driver with built-in guardrails, self-correctin
 ## Why StrictDB?
 
 - **One syntax, six backends** — MongoDB-style filters translate automatically to SQL WHERE clauses and Elasticsearch Query DSL
+- **SQL Mode** — write native SQL queries against MongoDB. JOINs, subqueries, window functions — all translated to aggregate pipelines automatically
+- **Native pipelines** — `db.aggregate()` accepts any MongoDB pipeline, translated across all backends
 - **AI-first** — `describe()`, `validate()`, and `explain()` let AI agents discover schemas and dry-run queries before execution
 - **Guardrails** — blocks empty-filter deletes, unbounded queries, and other dangerous operations by default
 - **Self-correcting errors** — every error includes a `.fix` field with the exact corrective action
@@ -126,6 +128,66 @@ await db.batch([
 await db.close();
 ```
 
+## SQL Mode — Write SQL, Run on MongoDB
+
+StrictDB is the first database driver that lets you write native SQL and execute it directly against MongoDB. Not a translator — a full execution engine. SQL in, results out.
+
+```typescript
+// Write SQL you already know
+const users = await db.sql('SELECT * FROM users WHERE age > 25 LIMIT 50');
+
+// Parameterized queries
+const user = await db.sql(
+  'SELECT * FROM users WHERE email = ? AND status = ? LIMIT 1',
+  { params: ['tim@example.com', 'active'] }
+);
+
+// See what MongoDB actually ran
+const result = await db.sql(
+  'SELECT u.name, COUNT(o.id) as order_count FROM users u JOIN orders o ON u.id = o.user_id GROUP BY u.name HAVING COUNT(o.id) > 5 ORDER BY order_count DESC LIMIT 10',
+  { explain: true }
+);
+// result.data — query results
+// result.plan — the aggregate pipeline that ran
+```
+
+### What SQL Mode Supports
+
+- **SELECT** with WHERE, ORDER BY, LIMIT, OFFSET, DISTINCT, aliases
+- **JOINs** — INNER, LEFT, RIGHT, FULL OUTER (runs parallel pipelines)
+- **Aggregates** — COUNT, SUM, AVG, MIN, MAX, GROUP BY, HAVING
+- **Window Functions** — ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD
+- **Subqueries** — IN, NOT IN, EXISTS (multi-phase dependency resolution)
+- **Functions** — UPPER, LOWER, CONCAT, ROUND, COALESCE, CASE WHEN, and 30+ more
+- **Writes** — INSERT, UPDATE, DELETE with guardrails
+- **Transactions** — BEGIN/COMMIT/ROLLBACK with MongoDB sessions
+- **Parameters** — MySQL (?) and PostgreSQL ($1) styles
+- **RETURNING** — INSERT ... RETURNING for ID retrieval
+- **{ explain: true }** — see the exact MongoDB pipeline generated
+
+Every SQL query goes through StrictDB's guardrails, logging, and error handling — same safety as Mode 1.
+
+## Native Pipeline — db.aggregate() & db.bulkWrite()
+
+Pro MongoDB developers can pass native aggregate pipelines directly. Zero-overhead on MongoDB — pipelines pass straight to the driver. On SQL/ES, pipeline stages are translated automatically.
+
+```typescript
+// Native aggregate pipeline
+const topDepts = await db.aggregate('employees', [
+  { $match: { status: 'active' } },
+  { $group: { _id: '$department', avg_salary: { $avg: '$salary' } } },
+  { $sort: { avg_salary: -1 } },
+  { $limit: 5 }
+]);
+
+// Native bulk write (exact MongoDB format)
+const receipt = await db.bulkWrite('users', [
+  { insertOne: { document: { name: 'Tim', role: 'admin' } } },
+  { updateOne: { filter: { email: 'old@test.com' }, update: { $set: { active: false } } } },
+  { deleteOne: { filter: { status: 'banned' } } },
+]);
+```
+
 ## URI Auto-Detection
 
 StrictDB detects the backend from the connection URI:
@@ -178,7 +240,25 @@ db.batch(operations)                                           // → Promise<Op
   deletedCount: number;
   duration: number;
   backend: 'mongo' | 'sql' | 'elastic';
+  insertedId?: string;      // The _id of the inserted document
+  insertedIds?: string[];   // Array of _ids for batch inserts
+  upsertedId?: string;      // The _id if upsert created a new doc
 }
+```
+
+### SQL Mode
+
+```typescript
+db.sql(sql, options?)  // → Promise<SqlMode2Result | OperationReceipt>
+```
+
+**SqlOptions:** `{ params?: any[], dialect?: 'mysql' | 'postgresql', explain?: boolean, raw?: boolean }`
+
+### Native Pipeline
+
+```typescript
+db.aggregate<T>(collection, pipeline, options?)    // → Promise<T[]>
+db.bulkWrite(collection, operations)               // → Promise<OperationReceipt>
 ```
 
 ### AI-First Discovery
@@ -383,10 +463,22 @@ src/
     mongo-adapter.ts     # MongoDB adapter
     sql-adapter.ts       # PostgreSQL/MySQL/MSSQL/SQLite adapter
     elastic-adapter.ts   # Elasticsearch adapter
+  sql/                   # SQL Mode 2 execution engine
+    parser.ts            # SQL parser (lazy-loaded)
+    planner.ts           # AST → execution plan
+    executor.ts          # Three-phase execution
+    translators/         # SQL → MongoDB pipeline translators
+  translators/           # Backend-agnostic pipeline translators
+    sql-filter.ts        # MongoDB filter → SQL WHERE
+    sql-builder.ts       # SQL query builders
+    elastic-filter.ts    # MongoDB filter → ES Query DSL
+    pipeline-sql.ts      # Aggregate pipeline → SQL
+    pipeline-elastic.ts  # Aggregate pipeline → ES
+  errors/                # Per-backend error mappers
 mcp/
   server.ts              # MCP server entry point
   tools.ts               # 14 MCP tool definitions
-tests/
+tests/                            # 627 tests across 28 files
   filter-translator.test.ts  # 71 tests
   errors.test.ts             # 30 tests
   sanitize.test.ts           # 18 tests
