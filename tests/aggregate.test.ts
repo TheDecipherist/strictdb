@@ -12,7 +12,7 @@ import { StrictDBError } from '../src/errors.js';
 import { translatePipelineToSQL, translatePipelineToElastic } from '../src/filter-translator.js';
 
 const emitter = new StrictDBEventEmitter();
-const ctx = { enabled: true, emitter };
+const ctx = { enabled: true, limitRequired: true, emptyFilter: true, emitter };
 
 describe('db.aggregate()', () => {
   describe('pipeline validation', () => {

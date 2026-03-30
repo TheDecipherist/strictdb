@@ -8,7 +8,7 @@ import { StrictDBEventEmitter } from '../src/events.js';
 import { StrictDBError } from '../src/errors.js';
 
 function makeCtx() {
-  return { enabled: true, emitter: new StrictDBEventEmitter() };
+  return { enabled: true, limitRequired: true, emptyFilter: true, emitter: new StrictDBEventEmitter() };
 }
 
 describe('checkGuardrails', () => {

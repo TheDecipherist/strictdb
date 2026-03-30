@@ -11,7 +11,7 @@ import { StrictDBEventEmitter } from '../src/events.js';
 import { StrictDBError } from '../src/errors.js';
 
 const emitter = new StrictDBEventEmitter();
-const ctx = { enabled: true, emitter };
+const ctx = { enabled: true, limitRequired: true, emptyFilter: true, emitter };
 
 describe('db.bulkWrite()', () => {
   describe('operation parsing (guardrails acceptance)', () => {

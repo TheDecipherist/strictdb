@@ -164,6 +164,15 @@ export interface SanitizeRule {
   transform: (value: unknown, field: string, collection: string) => unknown;
 }
 
+export interface GuardrailConfig {
+  /** Block unbounded queries without LIMIT (default: true) */
+  limitRequired?: boolean;
+  /** Block empty-filter deletes/updates (default: true) */
+  emptyFilter?: boolean;
+  /** Block = NULL comparisons in SQL mode (default: true) */
+  nullComparison?: boolean;
+}
+
 export interface StrictDBConfig {
   uri: string;
   pool?: PoolPreset;
@@ -174,7 +183,7 @@ export interface StrictDBConfig {
   sanitizeRules?: SanitizeRule[];
   reconnect?: ReconnectConfig | boolean;
   slowQueryMs?: number;
-  guardrails?: boolean;
+  guardrails?: boolean | GuardrailConfig;
   logging?: boolean | 'verbose';
   timestamps?: boolean | TimestampFieldNames;
   elastic?: {

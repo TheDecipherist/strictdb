@@ -21,18 +21,23 @@ interface AstNode {
  * Check SQL AST for guardrail violations.
  * Throws StrictDBError if blocked.
  */
-export function checkSqlGuardrails(ast: AstNode, sql: string): void {
+export function checkSqlGuardrails(
+  ast: AstNode,
+  sql: string,
+  config?: { limitRequired: boolean; emptyFilter: boolean },
+): void {
   const stmtType = ast.type?.toLowerCase();
+  const cfg = config ?? { limitRequired: true, emptyFilter: true };
 
-  if (stmtType === 'delete') {
+  if (stmtType === 'delete' && cfg.emptyFilter) {
     checkDeleteGuardrail(ast, sql);
   }
 
-  if (stmtType === 'select') {
+  if (stmtType === 'select' && cfg.limitRequired) {
     checkSelectGuardrail(ast, sql);
   }
 
-  if (stmtType === 'update') {
+  if (stmtType === 'update' && cfg.emptyFilter) {
     checkUpdateGuardrail(ast, sql);
   }
 }

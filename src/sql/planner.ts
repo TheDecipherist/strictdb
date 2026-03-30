@@ -33,15 +33,22 @@ import { checkSqlGuardrails, checkNullComparisons } from './guardrails.js';
 /**
  * Build an ExecutionPlan from a parsed AST.
  */
-export function buildExecutionPlan(ast: unknown, sql: string): ExecutionPlan {
+export function buildExecutionPlan(
+  ast: unknown,
+  sql: string,
+  guardrails?: { limitRequired: boolean; emptyFilter: boolean; nullComparison: boolean },
+): ExecutionPlan {
   const node = ast as Record<string, unknown>;
   const stmtType = (node['type'] as string || '').toLowerCase();
 
-  // Check guardrails
-  checkSqlGuardrails(node as { type?: string; where?: unknown; limit?: unknown; from?: Array<{ table?: string }>; table?: Array<{ table?: string }> | string; columns?: unknown; set?: unknown }, sql);
+  // Check guardrails (respects granular config)
+  const gr = guardrails ?? { limitRequired: true, emptyFilter: true, nullComparison: true };
+  if (gr.limitRequired || gr.emptyFilter) {
+    checkSqlGuardrails(node as { type?: string; where?: unknown; limit?: unknown; from?: Array<{ table?: string }>; table?: Array<{ table?: string }> | string; columns?: unknown; set?: unknown }, sql, gr);
+  }
 
   // Check for = NULL comparisons
-  if (node['where']) {
+  if (gr.nullComparison && node['where']) {
     checkNullComparisons(node['where'], sql);
   }
 

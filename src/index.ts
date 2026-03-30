@@ -18,6 +18,7 @@ export type { ExplainPlan, SqlMode2Dialect } from './sql/types.js';
 export type {
   AggregateOptions,
   Backend,
+  GuardrailConfig,
   BatchOperation,
   CollectionDescription,
   CollectionSchema,

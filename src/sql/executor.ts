@@ -18,6 +18,12 @@ export interface SqlExecutorAdapter {
   bulkWrite(collection: string, ops: WriteOperation[]): Promise<OperationReceipt>;
   /** Mutable — set by executor after INSERT to scope last insert ID per instance. */
   lastInsertId?: string;
+  /** Guardrail config — passed from StrictDB instance */
+  guardrails?: {
+    limitRequired: boolean;
+    emptyFilter: boolean;
+    nullComparison: boolean;
+  };
 }
 
 /** Get the last inserted ID for the given adapter (for LAST_INSERT_ID() function). */

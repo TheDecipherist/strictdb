@@ -63,7 +63,7 @@ export class SqlEngine {
       return SqlEngine.executeUnion(rootNode, adapter, explain);
     }
 
-    const plan = buildExecutionPlan(astNode, sql);
+    const plan = buildExecutionPlan(astNode, sql, adapter.guardrails);
 
     // Execute
     const result = await executePlan(plan, adapter, explain);

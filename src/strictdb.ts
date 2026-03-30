@@ -73,6 +73,9 @@ export class StrictDB {
   private backend: Backend;
   private schemaValidation: boolean;
   private guardrailsEnabled: boolean;
+  private guardrailLimitRequired: boolean;
+  private guardrailEmptyFilter: boolean;
+  private guardrailNullComparison: boolean;
   private sanitizeEnabled: boolean;
   private sanitizeRules: SanitizeRule[];
   private timestampConfig: ResolvedTimestampConfig;
@@ -90,7 +93,18 @@ export class StrictDB {
     this.logger = logger;
     this.backend = backend;
     this.schemaValidation = config.schema ?? false;
-    this.guardrailsEnabled = config.guardrails ?? true;
+    const gr = config.guardrails;
+    if (typeof gr === 'object' && gr !== null) {
+      this.guardrailsEnabled = true;
+      this.guardrailLimitRequired = gr.limitRequired ?? true;
+      this.guardrailEmptyFilter = gr.emptyFilter ?? true;
+      this.guardrailNullComparison = gr.nullComparison ?? true;
+    } else {
+      this.guardrailsEnabled = gr ?? true;
+      this.guardrailLimitRequired = this.guardrailsEnabled;
+      this.guardrailEmptyFilter = this.guardrailsEnabled;
+      this.guardrailNullComparison = this.guardrailsEnabled;
+    }
     this.sanitizeEnabled = config.sanitize ?? true;
     this.sanitizeRules = config.sanitizeRules ?? [];
     this.timestampConfig = resolveTimestampConfig(config.timestamps);
@@ -149,7 +163,7 @@ export class StrictDB {
 
     if (this.guardrailsEnabled) {
       checkGuardrails(
-        { enabled: true, emitter: this.emitter },
+        { enabled: true, limitRequired: this.guardrailLimitRequired, emptyFilter: this.guardrailEmptyFilter, emitter: this.emitter },
         'queryMany',
         collection,
         sanitizedFilter as Record<string, unknown>,
@@ -272,7 +286,7 @@ export class StrictDB {
 
     if (this.guardrailsEnabled) {
       checkGuardrails(
-        { enabled: true, emitter: this.emitter },
+        { enabled: true, limitRequired: this.guardrailLimitRequired, emptyFilter: this.guardrailEmptyFilter, emitter: this.emitter },
         'updateMany',
         collection,
         sanitizedFilter as Record<string, unknown>,
@@ -294,7 +308,7 @@ export class StrictDB {
 
     if (this.guardrailsEnabled) {
       checkGuardrails(
-        { enabled: true, emitter: this.emitter },
+        { enabled: true, limitRequired: this.guardrailLimitRequired, emptyFilter: this.guardrailEmptyFilter, emitter: this.emitter },
         'deleteOne',
         collection,
         sanitizedFilter as Record<string, unknown>,
@@ -314,7 +328,7 @@ export class StrictDB {
 
     if (this.guardrailsEnabled) {
       checkGuardrails(
-        { enabled: true, emitter: this.emitter },
+        { enabled: true, limitRequired: this.guardrailLimitRequired, emptyFilter: this.guardrailEmptyFilter, emitter: this.emitter },
         'deleteMany',
         collection,
         sanitizedFilter as Record<string, unknown>,
@@ -463,6 +477,11 @@ export class StrictDB {
           deletedCount,
         });
       },
+      guardrails: {
+        limitRequired: self.guardrailLimitRequired,
+        emptyFilter: self.guardrailEmptyFilter,
+        nullComparison: self.guardrailNullComparison,
+      },
     };
     return this._sqlAdapter;
   }
@@ -506,7 +525,7 @@ export class StrictDB {
     // Guardrails
     if (this.guardrailsEnabled) {
       checkPipelineGuardrails(
-        { enabled: true, emitter: this.emitter },
+        { enabled: true, limitRequired: this.guardrailLimitRequired, emptyFilter: this.guardrailEmptyFilter, emitter: this.emitter },
         collection,
         pipeline,
       );
@@ -557,7 +576,7 @@ export class StrictDB {
     // Guardrails
     if (this.guardrailsEnabled) {
       checkBulkWriteGuardrails(
-        { enabled: true, emitter: this.emitter },
+        { enabled: true, limitRequired: this.guardrailLimitRequired, emptyFilter: this.guardrailEmptyFilter, emitter: this.emitter },
         collection,
         operations as Record<string, unknown>[],
       );
