@@ -31,14 +31,14 @@ import {
   translateToSQL,
   translatePipelineToSQL,
 } from '../filter-translator.js';
-import type { ExecFn, TxClient } from './sql-adapter.js';
+import type { ExecFn, TxClient } from './sql-helpers.js';
 import {
   limitUpdateOne,
   limitDeleteOne,
   performUpsert,
   stripExcludedFields,
   performLookup,
-} from './sql-adapter.js';
+} from './sql-helpers.js';
 
 export class SqlTransactionAdapter implements DatabaseAdapter {
   readonly backend: Backend = 'sql';
