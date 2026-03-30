@@ -44,7 +44,15 @@ ORMs break on major upgrades. Prisma has migration headaches. Mongoose had break
 - Upgrade your driver → run `npm update`
 - Your application code → stays identical. Always.
 
-This is a permanent guarantee, not a version policy. StrictDB will never ship a breaking change to its public API.
+> *"You're always afraid to upgrade your databases because new drivers always break something. So most people just stay on older versions saying they'll get around to upgrading — but never do."*
+>
+> *"Why should the 'language' you're writing be different from Mongo to SQL to Elasticsearch? It's data. Give me my data. Get out of the way and let me build what I want."*
+>
+> — TheDecipherist, creator of StrictDB
+
+StrictDB runs an automated analyzer every day that checks every supported driver for changes. When a driver updates, StrictDB absorbs it internally — before it ever reaches your code. This is not a version policy. It's engineered.
+
+StrictDB monitors MongoDB, pg, mysql2, mssql, better-sqlite3, and @elastic/elasticsearch for breaking changes daily.
 
 ## Installation
 
