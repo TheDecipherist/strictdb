@@ -7,7 +7,42 @@
  */
 
 import type { Dependency } from '../types.js';
-import { buildSelectPipeline, extractCollection } from './select.js';
+import { buildSelectPipeline, extractCollection, translateWhere } from './select.js';
+import { hasAggregates, extractAggregateFields, buildGroupStage } from './aggregates.js';
+
+/**
+ * Build a complete pipeline for a subquery AST, including aggregate support.
+ * Unlike buildSelectPipeline (which is simplified), this handles $group for
+ * aggregate subqueries like SELECT AVG(age) FROM users.
+ */
+function buildSubqueryPipeline(ast: Record<string, unknown>): Record<string, unknown>[] {
+  const columns = ast['columns'];
+  const where = ast['where'];
+
+  // Check if this is an aggregate subquery (SELECT AVG/COUNT/SUM/etc.)
+  if (hasAggregates(columns)) {
+    const stages: Record<string, unknown>[] = [];
+
+    // WHERE → $match
+    if (where) {
+      const match = translateWhere(where);
+      if (Object.keys(match).length > 0) {
+        stages.push({ $match: match });
+      }
+    }
+
+    // Build $group
+    const aggFields = extractAggregateFields(columns);
+    const tableAliases = new Map<string, string>();
+    const groupResult = buildGroupStage(null, aggFields, columns, tableAliases);
+    stages.push(groupResult.groupStage);
+
+    return stages;
+  }
+
+  // Non-aggregate: use the standard pipeline builder
+  return buildSelectPipeline(ast);
+}
 
 // Counter scoped per extractSubqueryDeps call (not module-level)
 // resetDepCounter kept for test compatibility
@@ -49,7 +84,7 @@ function walkAndExtract(node: Record<string, unknown>, deps: Dependency[]): Reco
     if (subNode?.['type'] === 'select' || subNode?.['ast'] !== undefined) {
       const subAst = (subNode['ast'] ?? subNode) as Record<string, unknown>;
       const subCollection = extractCollection(subAst);
-      const subPipeline = buildSelectPipeline(subAst);
+      const subPipeline = buildSubqueryPipeline(subAst);
 
       const depId = `dep_${++_testDepCounter}`;
       const leftField = (node['left'] as Record<string, unknown>)?.['column'] as string;
@@ -68,13 +103,56 @@ function walkAndExtract(node: Record<string, unknown>, deps: Dependency[]): Reco
     }
   }
 
+  // Check for scalar subquery on right side of comparison (>, <, >=, <=, =, !=)
+  if (type === 'binary_expr' && ['>', '<', '>=', '<=', '=', '!=', '<>'].includes(operator)) {
+    const right = node['right'] as Record<string, unknown>;
+    // Unwrap expr_list wrapper
+    let subNode = right;
+    if (right?.['type'] === 'expr_list') {
+      const values = right['value'] as Array<Record<string, unknown>> | undefined;
+      if (values?.length === 1 && values[0]!['ast']) {
+        subNode = values[0]!;
+      }
+    }
+    if (subNode?.['type'] === 'select' || subNode?.['ast'] !== undefined) {
+      const subAst = (subNode['ast'] ?? subNode) as Record<string, unknown>;
+      const subCollection = extractCollection(subAst);
+      const subPipeline = buildSubqueryPipeline(subAst);
+
+      const depId = `dep_${++_testDepCounter}`;
+      const leftField = (node['left'] as Record<string, unknown>)?.['column'] as string;
+
+      // Map SQL operator to MongoDB operator
+      const opMap: Record<string, string> = {
+        '>': '$gt', '<': '$lt', '>=': '$gte', '<=': '$lte',
+        '=': '$eq', '!=': '$ne', '<>': '$ne',
+      };
+
+      deps.push({
+        id: depId,
+        type: 'subquery',
+        collection: subCollection,
+        pipeline: subPipeline,
+        injectAs: 'scalar',
+        targetField: leftField,
+      });
+
+      return {
+        _depPlaceholder: depId,
+        field: leftField,
+        op: opMap[operator] ?? '$gt',
+        scalarOp: true,
+      };
+    }
+  }
+
   // Check for EXISTS
   if (type === 'unary_expr' && operator === 'EXISTS') {
     const expr = node['expr'] as Record<string, unknown>;
     if (expr?.['type'] === 'select' || expr?.['ast'] !== undefined) {
       const subAst = (expr['ast'] ?? expr) as Record<string, unknown>;
       const subCollection = extractCollection(subAst);
-      const subPipeline = buildSelectPipeline(subAst);
+      const subPipeline = buildSubqueryPipeline(subAst);
 
       const depId = `dep_${++_testDepCounter}`;
       deps.push({

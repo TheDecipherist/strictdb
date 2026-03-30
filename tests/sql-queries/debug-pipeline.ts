@@ -2,8 +2,6 @@ import { config } from 'dotenv';
 config();
 import { StrictDB } from '../../src/index.js';
 import type { SqlMode2Result } from '../../src/sql/types.js';
-import { parseSql } from '../../src/sql/parser.js';
-import { buildExecutionPlan } from '../../src/sql/planner.js';
 
 async function main() {
   const db = await StrictDB.create({
@@ -13,53 +11,29 @@ async function main() {
     logging: false,
   });
 
-  const queries = [
-    {
-      name: 'GROUP BY with HAVING',
-      sql: "SELECT department, AVG(salary) AS avg_sal, COUNT(*) AS headcount FROM employees GROUP BY department HAVING AVG(salary) > 80000",
-    },
-    {
-      name: 'JOIN + GROUP BY + HAVING',
-      sql: "SELECT u.name, SUM(o.total) AS total_spent, COUNT(*) AS order_count FROM users u INNER JOIN orders o ON u.userId = o.userId GROUP BY u.name HAVING SUM(o.total) > 500",
-    },
-    {
-      name: 'CASE + Aggregation',
-      sql: "SELECT CASE WHEN status IN ('pending', 'confirmed') THEN 'active' WHEN status IN ('shipped', 'delivered') THEN 'completed' ELSE 'cancelled' END AS status_group, COUNT(*) AS order_count FROM orders GROUP BY CASE WHEN status IN ('pending', 'confirmed') THEN 'active' WHEN status IN ('shipped', 'delivered') THEN 'completed' ELSE 'cancelled' END",
-    },
-    {
-      name: 'Calculated Fields + Filter + Sort',
-      sql: "SELECT name, price, stock, ROUND(price * stock, 2) AS revenue_potential, category FROM products WHERE price * stock > 1000 ORDER BY price * stock DESC LIMIT 10",
-    },
-  ];
+  // Test scalar subquery with explain
+  const sql = "SELECT name, age FROM users WHERE age > (SELECT AVG(age) AS avg FROM users) LIMIT 10";
+  const r = await db.sql(sql, { explain: true }) as SqlMode2Result;
 
-  for (const q of queries) {
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`Query: ${q.name}`);
-    console.log(`SQL: ${q.sql.slice(0, 80)}...`);
-
-    // Show pipeline
-    try {
-      const ast = parseSql(q.sql);
-      const plan = buildExecutionPlan(ast, q.sql);
-      console.log('\nPipeline stages:');
-      for (const stage of plan.pipelines[0]?.stages ?? []) {
-        console.log('  ', JSON.stringify(stage));
-      }
-    } catch (err) {
-      console.log('Plan error:', (err as Error).message);
-    }
-
-    // Execute
-    try {
-      const result = await db.sql(q.sql) as SqlMode2Result;
-      console.log(`\nResults: ${result.data.length} docs`);
-      if (result.data.length > 0) {
-        console.log('First:', JSON.stringify(result.data[0], null, 2));
-      }
-    } catch (err) {
-      console.log('Execution error:', (err as Error).message);
-    }
+  console.log('Results:', r.data.length);
+  if (r.data.length > 0) console.log('First:', JSON.stringify(r.data[0]));
+  console.log('\nPlan:');
+  console.log('Phases:', r.plan?.phases);
+  console.log('Deps:', r.plan?.dependencies.length);
+  for (const dep of r.plan?.dependencies ?? []) {
+    console.log(`  ${dep.type}: collection=${dep.collection}, results=${dep.resultCount}`);
+    console.log('  pipeline:', JSON.stringify(dep.pipeline));
   }
+  console.log('\nPipeline stages:');
+  for (const stage of r.plan?.pipelines[0]?.stages ?? []) {
+    console.log(' ', JSON.stringify(stage));
+  }
+
+  // Also test: orders above average total
+  console.log('\n=== Orders above average total ===');
+  const r2 = await db.sql("SELECT orderId, total FROM orders WHERE total > (SELECT AVG(total) AS avg FROM orders) LIMIT 10", { explain: true }) as SqlMode2Result;
+  console.log('Results:', r2.data.length);
+  if (r2.data.length > 0) console.log('First:', JSON.stringify(r2.data[0]));
 
   await db.close();
 }

@@ -170,13 +170,25 @@ async function resolveSingleDep(
 ): Promise<void> {
   const depResults = await adapter.aggregate(dep.collection, dep.pipeline);
 
-  // For IN/NIN subqueries, extract the values from the first field of each result
+  // Extract values based on injection type
   let injectedValues: unknown[];
   if (dep.injectAs === 'in' || dep.injectAs === 'nin') {
+    // IN/NIN: extract the target field value from each result row
     injectedValues = depResults.map(r => {
       const keys = Object.keys(r).filter(k => k !== '_id');
       return keys.length > 0 ? r[keys[0]!] : r['_id'];
     });
+  } else if (dep.injectAs === 'scalar') {
+    // Scalar subquery: extract a single value from the first result
+    // e.g., SELECT AVG(age) → [{ _id: null, avg: 48.4 }] → [48.4]
+    if (depResults.length > 0) {
+      const row = depResults[0]!;
+      const keys = Object.keys(row).filter(k => k !== '_id');
+      const scalarValue = keys.length > 0 ? row[keys[0]!] : row['_id'];
+      injectedValues = [scalarValue];
+    } else {
+      injectedValues = [null];
+    }
   } else {
     injectedValues = depResults;
   }
@@ -228,11 +240,16 @@ function injectInObject(obj: Record<string, unknown>, resolved: Map<string, unkn
   for (const [key, value] of Object.entries(obj)) {
     if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
       const inner = value as Record<string, unknown>;
-      // Check for __depRef marker
+      // Check for __depRef marker (array injection for IN/NIN)
       if (inner['__depRef']) {
         const depId = inner['__depRef'] as string;
         const vals = resolved.get(depId) ?? [];
         result[key] = vals;
+      // Check for __scalarDepRef marker (single value injection for >, <, =, etc.)
+      } else if (inner['__scalarDepRef']) {
+        const depId = inner['__scalarDepRef'] as string;
+        const vals = resolved.get(depId) ?? [null];
+        result[key] = vals[0] ?? null; // Unwrap single value
       } else {
         result[key] = injectInObject(inner, resolved);
       }

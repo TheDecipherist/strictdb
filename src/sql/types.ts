@@ -67,7 +67,7 @@ export interface Dependency {
   type: 'subquery' | 'cte' | 'insert-select';
   collection: string;
   pipeline: Record<string, unknown>[];
-  injectAs: 'in' | 'nin' | 'exists' | 'cte-result';
+  injectAs: 'in' | 'nin' | 'exists' | 'cte-result' | 'scalar';
   targetField?: string;
   dependsOn?: string[];
 }
