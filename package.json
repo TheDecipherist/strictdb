@@ -1,6 +1,6 @@
 {
   "name": "strictdb",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "One unified API for MongoDB, PostgreSQL, MySQL, MSSQL, SQLite, and Elasticsearch. AI-first database driver with guardrails, self-correcting errors, and schema discovery.",
   "main": "dist/index.js",
