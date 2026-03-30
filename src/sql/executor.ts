@@ -245,11 +245,21 @@ function injectInObject(obj: Record<string, unknown>, resolved: Map<string, unkn
         const depId = inner['__depRef'] as string;
         const vals = resolved.get(depId) ?? [];
         result[key] = vals;
-      // Check for __scalarDepRef marker (single value injection for >, <, =, etc.)
       } else if (inner['__scalarDepRef']) {
         const depId = inner['__scalarDepRef'] as string;
         const vals = resolved.get(depId) ?? [null];
-        result[key] = vals[0] ?? null; // Unwrap single value
+        result[key] = vals[0] ?? null;
+      } else if (inner['__existsDepRef']) {
+        // EXISTS: resolve to true/false based on whether dependency returned results
+        const depId = inner['__existsDepRef'] as string;
+        const vals = resolved.get(depId) ?? [];
+        if (vals.length > 0) {
+          // EXISTS = true → match all (skip this condition)
+          // Don't add anything to result — effectively a no-op filter
+        } else {
+          // EXISTS = false → match nothing
+          result['_id'] = { $type: 'undefined' };
+        }
       } else {
         result[key] = injectInObject(inner, resolved);
       }

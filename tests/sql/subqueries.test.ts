@@ -176,6 +176,77 @@ describe('SQL Mode 2 — Subqueries', () => {
     });
   });
 
+  describe('scalar subquery (WHERE field > (SELECT AGG(...)))', () => {
+    it('should detect scalar subquery on right side of > comparison', () => {
+      const subAst = makeSubqueryAst('orders');
+      const whereNode: Record<string, unknown> = {
+        type: 'binary_expr',
+        operator: '>',
+        left: { type: 'column_ref', table: null, column: 'age' },
+        right: { type: 'expr_list', value: [{ ast: subAst }] },
+      };
+
+      const { deps } = extractSubqueryDeps(whereNode);
+      expect(deps.length).toBe(1);
+      expect(deps[0]?.injectAs).toBe('scalar');
+      expect(deps[0]?.targetField).toBe('age');
+    });
+
+    it('should detect scalar subquery for < operator', () => {
+      const subAst = makeSubqueryAst('products');
+      const whereNode: Record<string, unknown> = {
+        type: 'binary_expr',
+        operator: '<',
+        left: { type: 'column_ref', table: null, column: 'price' },
+        right: { type: 'expr_list', value: [{ ast: subAst }] },
+      };
+
+      const { deps } = extractSubqueryDeps(whereNode);
+      expect(deps.length).toBe(1);
+      expect(deps[0]?.injectAs).toBe('scalar');
+    });
+
+    it('should detect scalar subquery for = operator', () => {
+      const subAst = makeSubqueryAst('settings');
+      const whereNode: Record<string, unknown> = {
+        type: 'binary_expr',
+        operator: '=',
+        left: { type: 'column_ref', table: null, column: 'threshold' },
+        right: { type: 'expr_list', value: [{ ast: subAst }] },
+      };
+
+      const { deps } = extractSubqueryDeps(whereNode);
+      expect(deps.length).toBe(1);
+      expect(deps[0]?.injectAs).toBe('scalar');
+    });
+
+    it('should set scalarOp: true in the modified WHERE placeholder', () => {
+      const subAst = makeSubqueryAst('orders');
+      const whereNode: Record<string, unknown> = {
+        type: 'binary_expr',
+        operator: '>=',
+        left: { type: 'column_ref', table: null, column: 'score' },
+        right: { type: 'expr_list', value: [{ ast: subAst }] },
+      };
+
+      const { modifiedWhere } = extractSubqueryDeps(whereNode);
+      const modified = modifiedWhere as Record<string, unknown>;
+      expect(modified['scalarOp']).toBe(true);
+    });
+
+    it('should NOT treat a plain value comparison as scalar subquery', () => {
+      const whereNode: Record<string, unknown> = {
+        type: 'binary_expr',
+        operator: '>',
+        left: { type: 'column_ref', table: null, column: 'age' },
+        right: { type: 'number', value: 25 },
+      };
+
+      const { deps } = extractSubqueryDeps(whereNode);
+      expect(deps).toEqual([]);
+    });
+  });
+
   describe('plain WHERE (no subquery)', () => {
     it('should return no deps for a plain comparison node', () => {
       const plainWhere: Record<string, unknown> = {

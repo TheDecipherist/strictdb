@@ -251,13 +251,18 @@ function translateModifiedWhere(node: Record<string, unknown>, deps: Dependency[
   // Check if this IS a placeholder
   if (node['_depPlaceholder']) {
     const depId = node['_depPlaceholder'] as string;
-    const field = node['field'] as string;
+    const field = node['field'] as string | undefined;
     const op = node['op'] as string;
     const isScalar = node['scalarOp'] === true;
-    // Store a marker the executor can find and replace
+
+    // EXISTS: no field — resolved at execution time as a boolean condition
+    if (op === 'exists') {
+      return { __existsDepRef: depId };
+    }
+
     // Scalar deps use __scalarDepRef so the executor unwraps the single value
     const marker = isScalar ? { __scalarDepRef: depId } : { __depRef: depId };
-    return { [field]: { [op]: marker } };
+    return { [field!]: { [op]: marker } };
   }
 
   // Otherwise, translate normally but recurse for nested AND/OR
