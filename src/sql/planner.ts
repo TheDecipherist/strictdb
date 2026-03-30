@@ -10,6 +10,7 @@ import { unsupportedError } from './errors.js';
 import {
   buildSelectPipeline,
   extractCollection,
+  extractDerivedTable,
   buildTableAliases,
 } from './translators/select.js';
 import {
@@ -59,11 +60,19 @@ export function buildExecutionPlan(ast: unknown, sql: string): ExecutionPlan {
 }
 
 function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
-  const collection = extractCollection(ast);
-  const tableAliases = buildTableAliases(ast['from']);
+  const from = ast['from'] as Array<Record<string, unknown>> | undefined;
   const dependencies: Dependency[] = [];
   const pipelines: PipelineDef[] = [];
   let parallel = false;
+
+  // Check for derived table (subquery in FROM)
+  const derivedTable = extractDerivedTable(from);
+  if (derivedTable) {
+    return planDerivedTableSelect(ast, derivedTable, _sql);
+  }
+
+  const collection = extractCollection(ast);
+  const tableAliases = buildTableAliases(ast['from']);
 
   // 1. Extract CTEs (WITH clause)
   const withClause = ast['with'] as unknown;
@@ -77,7 +86,6 @@ function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
   dependencies.push(...subDeps);
 
   // 3. Check for JOINs
-  const from = ast['from'] as Array<Record<string, unknown>> | undefined;
   const joins = from ? extractJoins(from) : [];
   const hasJoins = joins.length > 0;
 
@@ -163,6 +171,16 @@ function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
 
     stages.push(groupResult.groupStage);
 
+    // COUNT(DISTINCT) post-processing: convert $addToSet arrays to $size counts
+    const distinctCountFields = aggFields.filter(a => a.func === 'COUNT' && a.distinct);
+    if (distinctCountFields.length > 0) {
+      const addFields: Record<string, unknown> = {};
+      for (const dcf of distinctCountFields) {
+        addFields[dcf.alias] = { $size: `$${dcf.alias}` };
+      }
+      stages.push({ $addFields: addFields });
+    }
+
     // HAVING → $match after $group
     const having = ast['having'];
     const havingStage = buildHavingStage(having, aggFields);
@@ -241,6 +259,73 @@ function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
 }
 
 /**
+ * Plan a SELECT that has a derived table (subquery) in the FROM clause.
+ * Strategy: recursively plan the inner query, then append outer
+ * WHERE/ORDER/LIMIT stages to its pipeline — single aggregation, no JS post-processing.
+ */
+function planDerivedTableSelect(
+  ast: Record<string, unknown>,
+  derived: { subAst: Record<string, unknown>; alias: string },
+  sql: string,
+): ExecutionPlan {
+  // Recursively plan the inner query to get its full pipeline (incl. GROUP BY, etc.)
+  const innerPlan = planSelect(derived.subAst, sql);
+  const innerStages = innerPlan.pipelines[0]?.stages ?? [];
+  const innerCollection = innerPlan.collection;
+
+  const tableAliases = buildTableAliases(ast['from']);
+
+  // Build outer pipeline stages (WHERE, ORDER BY, LIMIT) to append after inner
+  const outerStages: Record<string, unknown>[] = [];
+
+  // Outer WHERE
+  const outerWhere = ast['where'];
+  if (outerWhere) {
+    const match = translateWhere(outerWhere);
+    if (Object.keys(match).length > 0) {
+      outerStages.push({ $match: match });
+    }
+  }
+
+  // Outer ORDER BY
+  const orderByResult = translateOrderBy(ast['orderby'] ?? ast['orderBy'], tableAliases);
+  if (orderByResult) {
+    if (orderByResult.computedFields) {
+      outerStages.push({ $addFields: orderByResult.computedFields });
+    }
+    outerStages.push({ $sort: orderByResult.sort });
+  }
+
+  // Outer LIMIT/OFFSET
+  const { skip, limit } = translateLimit(ast['limit']);
+  if (skip) outerStages.push({ $skip: skip });
+  if (limit) outerStages.push({ $limit: limit });
+
+  // Outer SELECT columns → $project
+  const columns = ast['columns'];
+  const project = translateColumns(columns, tableAliases);
+  if (project) outerStages.push({ $project: project });
+
+  // Combine: inner pipeline + outer stages
+  const combinedPipeline = [...innerStages, ...outerStages];
+
+  const mainPipeline: PipelineDef = {
+    collection: innerCollection,
+    stages: combinedPipeline,
+  };
+
+  return {
+    type: 'select',
+    collection: innerCollection,
+    dependencies: innerPlan.dependencies,
+    pipelines: [mainPipeline, ...innerPlan.pipelines.slice(1)],
+    parallel: innerPlan.parallel,
+    isAggregate: innerPlan.isAggregate,
+    isTransaction: false,
+  };
+}
+
+/**
  * Translate a WHERE clause that contains subquery dependency placeholders.
  * Placeholders are { _depPlaceholder: depId, field: 'userId', op: '$in' }.
  * These are stored in the $match stage and replaced by the executor at runtime.
@@ -258,6 +343,11 @@ function translateModifiedWhere(node: Record<string, unknown>, deps: Dependency[
     // EXISTS: no field — resolved at execution time as a boolean condition
     if (op === 'exists') {
       return { __existsDepRef: depId };
+    }
+
+    // NOT EXISTS: inverted — resolved at execution time as a boolean condition
+    if (op === 'not-exists') {
+      return { __notExistsDepRef: depId };
     }
 
     // Scalar deps use __scalarDepRef so the executor unwraps the single value

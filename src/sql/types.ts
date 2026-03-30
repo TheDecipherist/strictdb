@@ -67,7 +67,7 @@ export interface Dependency {
   type: 'subquery' | 'cte' | 'insert-select';
   collection: string;
   pipeline: Record<string, unknown>[];
-  injectAs: 'in' | 'nin' | 'exists' | 'cte-result' | 'scalar';
+  injectAs: 'in' | 'nin' | 'exists' | 'not-exists' | 'cte-result' | 'scalar';
   targetField?: string;
   dependsOn?: string[];
 }
@@ -107,18 +107,26 @@ export interface ColumnRef {
   expr?: unknown;
 }
 
+export interface JoinCondition {
+  localField: string;
+  foreignField: string;
+}
+
 export interface JoinInfo {
-  type: 'inner' | 'left' | 'right' | 'full';
+  type: 'inner' | 'left' | 'right' | 'full' | 'cross';
   table: string;
   alias?: string;
   localField: string;
   foreignField: string;
+  /** Multi-condition ON clauses (when present, use pipeline-form $lookup) */
+  conditions?: JoinCondition[];
 }
 
 export interface AggregateField {
   func: string;
   field: string;
   alias: string;
+  distinct?: boolean;
 }
 
 export interface WindowSpec {

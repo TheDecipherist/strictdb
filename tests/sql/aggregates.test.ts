@@ -236,4 +236,72 @@ describe('SQL Mode 2 — Aggregates', () => {
       expect(matchStage.$match).toHaveProperty('status');
     });
   });
+
+  describe('COUNT(DISTINCT)', () => {
+    it('should extract distinct flag from COUNT(DISTINCT field)', () => {
+      const sql = 'SELECT COUNT(DISTINCT `status`) AS cnt FROM `orders`';
+      const ast = parseSql(sql);
+      const cols = (ast as Record<string, unknown>)['columns'];
+      const fields = extractAggregateFields(cols);
+
+      expect(fields).toHaveLength(1);
+      expect(fields[0]!.func).toBe('COUNT');
+      expect(fields[0]!.field).toBe('status');
+      expect(fields[0]!.distinct).toBe(true);
+    });
+
+    it('should use $addToSet in $group for COUNT(DISTINCT)', () => {
+      const sql = 'SELECT COUNT(DISTINCT `status`) AS cnt FROM `orders`';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+
+      const stages = plan.pipelines[0]!.stages;
+      const groupStage = stages.find(s => '$group' in s) as { $group: Record<string, unknown> } | undefined;
+      expect(groupStage).toBeDefined();
+      expect(groupStage!.$group['cnt']).toEqual({ $addToSet: '$status' });
+    });
+
+    it('should add $addFields with $size after $group for COUNT(DISTINCT)', () => {
+      const sql = 'SELECT COUNT(DISTINCT `status`) AS cnt FROM `orders`';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+
+      const stages = plan.pipelines[0]!.stages;
+      const groupIndex = stages.findIndex(s => '$group' in s);
+      expect(groupIndex).toBeGreaterThanOrEqual(0);
+
+      // The $addFields stage should come after $group
+      const addFieldsStage = stages[groupIndex + 1] as { $addFields: Record<string, unknown> } | undefined;
+      expect(addFieldsStage).toBeDefined();
+      expect(addFieldsStage!.$addFields['cnt']).toEqual({ $size: '$cnt' });
+    });
+
+    it('should handle COUNT(DISTINCT) with GROUP BY', () => {
+      const sql = 'SELECT `department`, COUNT(DISTINCT `role`) AS unique_roles FROM `employees` GROUP BY `department`';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+
+      const stages = plan.pipelines[0]!.stages;
+      const groupStage = stages.find(s => '$group' in s) as { $group: Record<string, unknown> } | undefined;
+      expect(groupStage).toBeDefined();
+      expect(groupStage!.$group['_id']).toBe('$department');
+      expect(groupStage!.$group['unique_roles']).toEqual({ $addToSet: '$role' });
+
+      // $addFields with $size
+      const groupIndex = stages.findIndex(s => '$group' in s);
+      const addFieldsStage = stages[groupIndex + 1] as { $addFields: Record<string, unknown> } | undefined;
+      expect(addFieldsStage).toBeDefined();
+      expect(addFieldsStage!.$addFields['unique_roles']).toEqual({ $size: '$unique_roles' });
+    });
+
+    it('should not set distinct flag for regular COUNT(field)', () => {
+      const sql = 'SELECT COUNT(`email`) AS cnt FROM `users`';
+      const ast = parseSql(sql);
+      const cols = (ast as Record<string, unknown>)['columns'];
+      const fields = extractAggregateFields(cols);
+
+      expect(fields).toHaveLength(1);
+      expect(fields[0]!.distinct).toBeUndefined();
+    });
+  });
 });

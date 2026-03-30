@@ -3,7 +3,7 @@
  *
  * GROUP BY → $group
  * HAVING → $match (after $group)
- * COUNT/SUM/AVG/MIN/MAX → accumulators
+ * COUNT/SUM/AVG/MIN/MAX/GROUP_CONCAT/ARRAY_AGG/STDDEV → accumulators
  * Window functions → $setWindowFields
  */
 
@@ -37,7 +37,8 @@ export function hasAggregates(columns: unknown): boolean {
   return columns.some((col: unknown) => {
     const c = col as Record<string, unknown>;
     const expr = c['expr'] as Record<string, unknown>;
-    return expr?.['type'] === 'aggr_func';
+    // aggr_func with an OVER clause is a window function, not a regular aggregate
+    return expr?.['type'] === 'aggr_func' && !expr?.['over'];
   });
 }
 
@@ -65,10 +66,11 @@ export function extractAggregateFields(columns: unknown): AggregateField[] {
     const expr = c['expr'] as Record<string, unknown>;
     const alias = c['as'] as string | null;
 
-    if (expr?.['type'] === 'aggr_func') {
-      const name = (expr['name'] as string || '').toUpperCase();
+    if (expr?.['type'] === 'aggr_func' && !expr?.['over']) {
+      const name = extractFunctionName(expr).toUpperCase() || (expr['name'] as string || '').toUpperCase();
       const args = expr['args'] as Record<string, unknown>;
       let field = '*';
+      const isDistinct = args?.['distinct'] === 'DISTINCT';
 
       if (args?.['expr']) {
         const argExpr = args['expr'] as Record<string, unknown>;
@@ -86,6 +88,7 @@ export function extractAggregateFields(columns: unknown): AggregateField[] {
         func: name,
         field,
         alias: alias ?? `${name.toLowerCase()}_${field}`.replace('*', 'all'),
+        distinct: isDistinct || undefined,
       });
     }
   }
@@ -301,6 +304,10 @@ function resolveGroupByExpr(
 function buildAccumulator(agg: AggregateField): Record<string, unknown> {
   switch (agg.func) {
     case 'COUNT':
+      // COUNT(DISTINCT field) — use $addToSet, then $size in a post-group $addFields stage
+      if (agg.distinct && agg.field !== '*') {
+        return { $addToSet: `$${agg.field}` };
+      }
       if (agg.field === '*') {
         return { $sum: 1 };
       }
@@ -322,6 +329,18 @@ function buildAccumulator(agg: AggregateField): Record<string, unknown> {
       return { $min: `$${agg.field}` };
     case 'MAX':
       return { $max: `$${agg.field}` };
+    case 'GROUP_CONCAT':
+    case 'STRING_AGG':
+    case 'LISTAGG':
+      // Collect values into array — separator-based join needs post-processing
+      return { $push: `$${agg.field}` };
+    case 'ARRAY_AGG':
+      return { $push: `$${agg.field}` };
+    case 'STDDEV':
+    case 'STDDEV_POP':
+      return { $stdDevPop: `$${agg.field}` };
+    case 'STDDEV_SAMP':
+      return { $stdDevSamp: `$${agg.field}` };
     default:
       return { $sum: 1 };
   }
@@ -486,6 +505,22 @@ function buildSingleWindowStage(specs: WindowSpec[]): Record<string, unknown> {
         break;
       case 'LAST_VALUE':
         output[spec.alias] = { $last: spec.field ? `$${spec.field}` : undefined };
+        break;
+      // Aggregate window functions
+      case 'SUM':
+        output[spec.alias] = { $sum: spec.field ? `$${spec.field}` : 1, window: { documents: ['unbounded', 'unbounded'] } };
+        break;
+      case 'AVG':
+        output[spec.alias] = { $avg: spec.field ? `$${spec.field}` : undefined, window: { documents: ['unbounded', 'unbounded'] } };
+        break;
+      case 'COUNT':
+        output[spec.alias] = { $sum: 1, window: { documents: ['unbounded', 'unbounded'] } };
+        break;
+      case 'MIN':
+        output[spec.alias] = { $min: spec.field ? `$${spec.field}` : undefined, window: { documents: ['unbounded', 'unbounded'] } };
+        break;
+      case 'MAX':
+        output[spec.alias] = { $max: spec.field ? `$${spec.field}` : undefined, window: { documents: ['unbounded', 'unbounded'] } };
         break;
     }
   }

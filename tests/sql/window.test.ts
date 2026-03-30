@@ -127,6 +127,89 @@ describe('SQL Mode 2 — Window Functions', () => {
     });
   });
 
+  describe('aggregate window functions (SUM/AVG/COUNT/MIN/MAX OVER)', () => {
+    it('should translate SUM(salary) OVER (PARTITION BY dept) to $setWindowFields with $sum', () => {
+      const sql = 'SELECT SUM(salary) OVER (PARTITION BY dept ORDER BY name) AS dept_total FROM employees LIMIT 100';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+
+      // Should NOT be treated as a regular aggregate (no $group stage)
+      expect(plan.isAggregate).toBe(false);
+
+      const windowStage = plan.pipelines[0]?.stages.find(s => '$setWindowFields' in s);
+      expect(windowStage).toBeDefined();
+
+      const swf = (windowStage as Record<string, unknown>)['$setWindowFields'] as Record<string, unknown>;
+      const output = swf['output'] as Record<string, unknown>;
+      const field = output['dept_total'] as Record<string, unknown>;
+      expect(field).toBeDefined();
+      expect(field['$sum']).toBe('$salary');
+      expect(field['window']).toEqual({ documents: ['unbounded', 'unbounded'] });
+    });
+
+    it('should translate AVG(score) OVER (PARTITION BY class) to $setWindowFields with $avg', () => {
+      const sql = 'SELECT AVG(score) OVER (PARTITION BY class ORDER BY name) AS class_avg FROM students LIMIT 100';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+
+      expect(plan.isAggregate).toBe(false);
+
+      const windowStage = plan.pipelines[0]?.stages.find(s => '$setWindowFields' in s);
+      expect(windowStage).toBeDefined();
+
+      const swf = (windowStage as Record<string, unknown>)['$setWindowFields'] as Record<string, unknown>;
+      const output = swf['output'] as Record<string, unknown>;
+      const field = output['class_avg'] as Record<string, unknown>;
+      expect(field).toBeDefined();
+      expect(field['$avg']).toBe('$score');
+    });
+
+    it('should translate COUNT(*) OVER (PARTITION BY dept) to $setWindowFields with $sum: 1', () => {
+      const sql = 'SELECT COUNT(*) OVER (PARTITION BY dept ORDER BY name) AS dept_count FROM employees LIMIT 100';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+
+      expect(plan.isAggregate).toBe(false);
+
+      const windowStage = plan.pipelines[0]?.stages.find(s => '$setWindowFields' in s);
+      expect(windowStage).toBeDefined();
+
+      const swf = (windowStage as Record<string, unknown>)['$setWindowFields'] as Record<string, unknown>;
+      const output = swf['output'] as Record<string, unknown>;
+      const field = output['dept_count'] as Record<string, unknown>;
+      expect(field).toBeDefined();
+      expect(field['$sum']).toBe(1);
+    });
+
+    it('should translate MIN(price) OVER (...) to $setWindowFields with $min', () => {
+      const sql = 'SELECT MIN(price) OVER (PARTITION BY category ORDER BY name) AS cat_min FROM products LIMIT 100';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+
+      const windowStage = plan.pipelines[0]?.stages.find(s => '$setWindowFields' in s);
+      expect(windowStage).toBeDefined();
+
+      const swf = (windowStage as Record<string, unknown>)['$setWindowFields'] as Record<string, unknown>;
+      const output = swf['output'] as Record<string, unknown>;
+      const field = output['cat_min'] as Record<string, unknown>;
+      expect(field['$min']).toBe('$price');
+    });
+
+    it('should translate MAX(score) OVER (...) to $setWindowFields with $max', () => {
+      const sql = 'SELECT MAX(score) OVER (PARTITION BY class ORDER BY name) AS max_score FROM students LIMIT 100';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+
+      const windowStage = plan.pipelines[0]?.stages.find(s => '$setWindowFields' in s);
+      expect(windowStage).toBeDefined();
+
+      const swf = (windowStage as Record<string, unknown>)['$setWindowFields'] as Record<string, unknown>;
+      const output = swf['output'] as Record<string, unknown>;
+      const field = output['max_score'] as Record<string, unknown>;
+      expect(field['$max']).toBe('$score');
+    });
+  });
+
   describe('window with PARTITION BY and ORDER BY', () => {
     it('should include both partitionBy and sortBy in $setWindowFields', () => {
       const sql = 'SELECT RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS dept_rank FROM employees LIMIT 100';

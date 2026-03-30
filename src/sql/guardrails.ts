@@ -85,6 +85,9 @@ function extractTableName(ast: AstNode): string {
 }
 
 function isAggregateQuery(ast: AstNode): boolean {
+  // GROUP BY always bounds results
+  if ((ast as Record<string, unknown>)['groupby']) return true;
+
   const columns = ast.columns as unknown[];
   if (!Array.isArray(columns)) return false;
   return columns.some((col: unknown) => {

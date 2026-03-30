@@ -80,6 +80,35 @@ function translateBinaryExpr(node: Record<string, unknown>): Record<string, unkn
     return { [field]: { $regex: regex, $options: 'i' } };
   }
 
+  // REGEXP / RLIKE
+  if (operator === 'REGEXP' || operator === 'RLIKE') {
+    const field = extractFieldName(left);
+    const pattern = extractValue(right) as string;
+    return { [field]: { $regex: pattern } };
+  }
+  if (operator === 'NOT REGEXP' || operator === 'NOT RLIKE') {
+    const field = extractFieldName(left);
+    const pattern = extractValue(right) as string;
+    return { [field]: { $not: { $regex: pattern } } };
+  }
+
+  // PostgreSQL regex operators
+  if (operator === '~') {
+    const field = extractFieldName(left);
+    const pattern = extractValue(right) as string;
+    return { [field]: { $regex: pattern } };
+  }
+  if (operator === '~*') {
+    const field = extractFieldName(left);
+    const pattern = extractValue(right) as string;
+    return { [field]: { $regex: pattern, $options: 'i' } };
+  }
+  if (operator === '!~') {
+    const field = extractFieldName(left);
+    const pattern = extractValue(right) as string;
+    return { [field]: { $not: { $regex: pattern } } };
+  }
+
   // IN / NOT IN (literal list)
   if (operator === 'IN' || operator === 'NOT IN') {
     const field = extractFieldName(left);
@@ -112,6 +141,35 @@ function translateBinaryExpr(node: Record<string, unknown>): Record<string, unkn
             $gte: coerceValue(extractValue(vals[0]!)),
             $lte: coerceValue(extractValue(vals[1]!)),
           },
+        };
+      }
+    }
+    return {};
+  }
+
+  // NOT BETWEEN
+  if (operator === 'NOT BETWEEN') {
+    const field = extractFieldName(left);
+    // NOT BETWEEN a AND b → $or: [{ field: { $lt: a } }, { field: { $gt: b } }]
+    const rightValue = right['value'] as unknown[];
+    if (Array.isArray(rightValue) && rightValue.length === 2) {
+      const low = typeof rightValue[0] === 'object' && rightValue[0] !== null
+        ? extractValue(rightValue[0] as Record<string, unknown>)
+        : rightValue[0];
+      const high = typeof rightValue[1] === 'object' && rightValue[1] !== null
+        ? extractValue(rightValue[1] as Record<string, unknown>)
+        : rightValue[1];
+      return { $or: [{ [field]: { $lt: coerceValue(low) } }, { [field]: { $gt: coerceValue(high) } }] };
+    }
+    const exprType = right['type'] as string;
+    if (exprType === 'expr_list') {
+      const vals = right['value'] as Record<string, unknown>[];
+      if (vals && vals.length === 2) {
+        return {
+          $or: [
+            { [field]: { $lt: coerceValue(extractValue(vals[0]!)) } },
+            { [field]: { $gt: coerceValue(extractValue(vals[1]!)) } },
+          ],
         };
       }
     }
@@ -414,15 +472,33 @@ export function buildTableAliases(from: unknown): Map<string, string> {
   let isFirst = true;
   for (const item of from) {
     const f = item as Record<string, unknown>;
-    const table = f['table'] as string;
+    const table = f['table'] as string | undefined;
     const alias = f['as'] as string | null;
-    if (alias) {
-      aliases.set(alias, table);
+
+    // Derived table: { expr: { ast: ... }, as: 't' }
+    if (!table && f['expr']) {
+      const expr = f['expr'] as Record<string, unknown>;
+      if (expr['ast']) {
+        const innerCollection = extractCollection(expr['ast'] as Record<string, unknown>);
+        const derivedAlias = alias ?? '_derived';
+        aliases.set(derivedAlias, innerCollection);
+        if (isFirst) {
+          aliases.set('__main__', derivedAlias);
+          isFirst = false;
+        }
+        continue;
+      }
     }
-    aliases.set(table, table);
+
+    if (table) {
+      if (alias) {
+        aliases.set(alias, table);
+      }
+      aliases.set(table, table);
+    }
     // Mark the first (main) table so resolveColumnRef can distinguish JOINs
     if (isFirst) {
-      aliases.set('__main__', table);
+      aliases.set('__main__', table ?? '_derived');
       isFirst = false;
     }
   }
@@ -486,11 +562,20 @@ export function buildSelectPipeline(ast: Record<string, unknown>): Record<string
 
 /**
  * Extract collection name from AST FROM clause.
+ * For derived tables (subquery in FROM), returns the inner subquery's collection.
  */
 export function extractCollection(ast: Record<string, unknown>): string {
   const from = ast['from'] as Array<Record<string, unknown>> | undefined;
-  if (from && from.length > 0 && from[0]!['table']) {
-    return from[0]!['table'] as string;
+  if (from && from.length > 0) {
+    const first = from[0]!;
+    if (first['table']) {
+      return first['table'] as string;
+    }
+    // Derived table: { expr: { ast: { from: [...] } }, as: 't' }
+    const expr = first['expr'] as Record<string, unknown> | undefined;
+    if (expr?.['ast']) {
+      return extractCollection(expr['ast'] as Record<string, unknown>);
+    }
   }
   // For INSERT/UPDATE/DELETE the table is in 'table'
   const table = ast['table'] as Array<Record<string, unknown>> | string | undefined;
@@ -499,4 +584,21 @@ export function extractCollection(ast: Record<string, unknown>): string {
     return table[0]!['table'] as string;
   }
   return 'unknown';
+}
+
+/**
+ * Check if the FROM clause contains a derived table (subquery in FROM).
+ * Returns the derived table info if found.
+ */
+export function extractDerivedTable(from: unknown): { subAst: Record<string, unknown>; alias: string } | null {
+  if (!Array.isArray(from) || from.length === 0) return null;
+  const first = from[0] as Record<string, unknown>;
+  const expr = first['expr'] as Record<string, unknown> | undefined;
+  if (expr?.['ast']) {
+    return {
+      subAst: expr['ast'] as Record<string, unknown>,
+      alias: (first['as'] as string) ?? '_derived',
+    };
+  }
+  return null;
 }

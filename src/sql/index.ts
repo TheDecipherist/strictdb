@@ -57,6 +57,12 @@ export class SqlEngine {
     // Handle array of ASTs (multi-statement)
     const astNode = Array.isArray(ast) ? ast[0] : ast;
 
+    // Handle UNION / UNION ALL — AST has set_op + _next chain
+    const rootNode = astNode as Record<string, unknown>;
+    if (rootNode['set_op'] && rootNode['_next']) {
+      return SqlEngine.executeUnion(rootNode, adapter, explain);
+    }
+
     const plan = buildExecutionPlan(astNode, sql);
 
     // Execute
@@ -68,6 +74,74 @@ export class SqlEngine {
     }
 
     return result;
+  }
+
+  /**
+   * Execute a UNION / UNION ALL query.
+   * Walks the _next chain, builds a plan for each SELECT, runs in parallel, merges.
+   */
+  private static async executeUnion(
+    rootAst: Record<string, unknown>,
+    adapter: SqlExecutorAdapter,
+    explain: boolean,
+  ): Promise<SqlMode2Result> {
+    // Collect all SELECT ASTs and the set operations between them
+    interface UnionSegment {
+      ast: Record<string, unknown>;
+      setOp: string; // 'union' or 'union all' — applies BEFORE this segment's results merge
+    }
+    const segments: UnionSegment[] = [];
+    let current: Record<string, unknown> | undefined = rootAst;
+
+    while (current) {
+      const setOp = (current['set_op'] as string | undefined) ?? '';
+      // Strip _next and set_op so buildExecutionPlan sees a plain SELECT
+      const cleanAst = { ...current };
+      delete cleanAst['_next'];
+      delete cleanAst['set_op'];
+      segments.push({ ast: cleanAst, setOp });
+      current = current['_next'] as Record<string, unknown> | undefined;
+    }
+
+    // Build and execute each SELECT in parallel
+    const results = await Promise.all(
+      segments.map(async (seg) => {
+        const plan = buildExecutionPlan(seg.ast, 'UNION segment');
+        const result = await executePlan(plan, adapter, explain);
+        return result.data;
+      }),
+    );
+
+    // Merge results according to set operations
+    // The set_op on segment[i] describes the operation between segment[i] and segment[i+1].
+    // Actually, in node-sql-parser: segment[0].set_op = 'union' means "union the first SELECT with _next".
+    // So we merge sequentially: start with results[0], then apply set_op[0] to merge results[1], etc.
+    let merged = results[0] ?? [];
+
+    for (let i = 1; i < results.length; i++) {
+      const op = segments[i - 1]!.setOp.toLowerCase();
+      const nextData = results[i] ?? [];
+
+      if (op === 'union all') {
+        // UNION ALL — simple concatenation
+        merged = [...merged, ...nextData];
+      } else {
+        // UNION — concatenate then deduplicate
+        const combined = [...merged, ...nextData];
+        const seen = new Set<string>();
+        const deduped: Record<string, unknown>[] = [];
+        for (const row of combined) {
+          const key = JSON.stringify(row);
+          if (!seen.has(key)) {
+            seen.add(key);
+            deduped.push(row);
+          }
+        }
+        merged = deduped;
+      }
+    }
+
+    return { data: merged };
   }
 
   /**

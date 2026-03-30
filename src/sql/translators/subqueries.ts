@@ -4,6 +4,7 @@
  * IN (SELECT ...) → Phase 2 dependency, inject as $in
  * NOT IN (SELECT ...) → Phase 2 dependency, inject as $nin
  * EXISTS (SELECT ...) → Phase 2 dependency, boolean check
+ * NOT EXISTS (SELECT ...) → Phase 2 dependency, inverted boolean check
  */
 
 import type { Dependency } from '../types.js';
@@ -164,6 +165,52 @@ function walkAndExtract(node: Record<string, unknown>, deps: Dependency[]): Reco
       });
 
       return { _depPlaceholder: depId, op: 'exists' };
+    }
+  }
+
+  // Check for NOT EXISTS — parser may emit as NOT wrapping EXISTS
+  if (type === 'unary_expr' && operator === 'NOT') {
+    const inner = node['expr'] as Record<string, unknown>;
+    const innerOp = (inner?.['operator'] as string || '').toUpperCase();
+    if (inner?.['type'] === 'unary_expr' && innerOp === 'EXISTS') {
+      const innerExpr = inner['expr'] as Record<string, unknown>;
+      if (innerExpr?.['type'] === 'select' || innerExpr?.['ast'] !== undefined) {
+        const subAst = (innerExpr['ast'] ?? innerExpr) as Record<string, unknown>;
+        const subCollection = extractCollection(subAst);
+        const subPipeline = buildSubqueryPipeline(subAst);
+
+        const depId = `dep_${++_testDepCounter}`;
+        deps.push({
+          id: depId,
+          type: 'subquery',
+          collection: subCollection,
+          pipeline: subPipeline,
+          injectAs: 'not-exists',
+        });
+
+        return { _depPlaceholder: depId, op: 'not-exists' };
+      }
+    }
+  }
+
+  // Check for NOT EXISTS — parser may emit as a single operator
+  if (type === 'unary_expr' && operator === 'NOT EXISTS') {
+    const expr = node['expr'] as Record<string, unknown>;
+    if (expr?.['type'] === 'select' || expr?.['ast'] !== undefined) {
+      const subAst = (expr['ast'] ?? expr) as Record<string, unknown>;
+      const subCollection = extractCollection(subAst);
+      const subPipeline = buildSubqueryPipeline(subAst);
+
+      const depId = `dep_${++_testDepCounter}`;
+      deps.push({
+        id: depId,
+        type: 'subquery',
+        collection: subCollection,
+        pipeline: subPipeline,
+        injectAs: 'not-exists',
+      });
+
+      return { _depPlaceholder: depId, op: 'not-exists' };
     }
   }
 

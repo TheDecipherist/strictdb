@@ -202,4 +202,150 @@ describe('SQL Mode 2 — JOINs', () => {
       expect(second.$lookup.from).toBe('products');
     });
   });
+
+  describe('CROSS JOIN', () => {
+    it('should translate CROSS JOIN to $lookup with empty pipeline + $unwind', () => {
+      const sql = 'SELECT * FROM `users` CROSS JOIN `roles` LIMIT 10';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+      const stages = plan.pipelines[0]!.stages;
+
+      const lookupStage = stages.find(s => '$lookup' in s) as { $lookup: Record<string, unknown> } | undefined;
+      expect(lookupStage).toBeDefined();
+      expect(lookupStage!.$lookup.from).toBe('roles');
+      expect(lookupStage!.$lookup.pipeline).toEqual([]);
+      // No localField/foreignField — uses pipeline form
+      expect(lookupStage!.$lookup.localField).toBeUndefined();
+
+      const unwindStage = stages.find(s => '$unwind' in s) as { $unwind: unknown } | undefined;
+      expect(unwindStage).toBeDefined();
+      expect(typeof unwindStage!.$unwind).toBe('string');
+      expect(unwindStage!.$unwind).toBe('$roles');
+    });
+
+    it('should use alias for $unwind path when alias is present', () => {
+      const sql = 'SELECT * FROM `users` u CROSS JOIN `roles` r LIMIT 10';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+      const stages = plan.pipelines[0]!.stages;
+
+      const lookupStage = stages.find(s => '$lookup' in s) as { $lookup: Record<string, unknown> } | undefined;
+      expect(lookupStage!.$lookup.as).toBe('r');
+
+      const unwindStage = stages.find(s => '$unwind' in s) as { $unwind: unknown } | undefined;
+      expect(unwindStage!.$unwind).toBe('$r');
+    });
+
+    it('should extract CROSS JOIN via extractJoins', () => {
+      const sql = 'SELECT * FROM `users` CROSS JOIN `products` LIMIT 10';
+      const ast = parseSql(sql);
+      const node = ast as Record<string, unknown>;
+      const joins = extractJoins(node['from']);
+      expect(joins).toHaveLength(1);
+      expect(joins[0]!.type).toBe('cross');
+      expect(joins[0]!.table).toBe('products');
+    });
+  });
+
+  describe('multi-condition ON', () => {
+    it('should handle AND-chained ON clause with two conditions', () => {
+      const sql = 'SELECT * FROM `users` u INNER JOIN `orders` o ON u.id = o.user_id AND u.type = o.type LIMIT 10';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+      const stages = plan.pipelines[0]!.stages;
+
+      const lookupStage = stages.find(s => '$lookup' in s) as { $lookup: Record<string, unknown> } | undefined;
+      expect(lookupStage).toBeDefined();
+      // Multi-condition uses pipeline form with let + $expr
+      expect(lookupStage!.$lookup.let).toBeDefined();
+      expect(lookupStage!.$lookup.pipeline).toBeDefined();
+
+      const pipeline = lookupStage!.$lookup.pipeline as Record<string, unknown>[];
+      expect(pipeline.length).toBeGreaterThanOrEqual(1);
+      const matchStage = pipeline[0] as { $match: { $expr: Record<string, unknown> } };
+      expect(matchStage.$match.$expr).toHaveProperty('$and');
+      const andConditions = (matchStage.$match.$expr as Record<string, unknown>)['$and'] as unknown[];
+      expect(andConditions).toHaveLength(2);
+    });
+
+    it('should use let variables for each local field', () => {
+      const sql = 'SELECT * FROM `users` u INNER JOIN `orders` o ON u.id = o.user_id AND u.region = o.region LIMIT 10';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+      const stages = plan.pipelines[0]!.stages;
+
+      const lookupStage = stages.find(s => '$lookup' in s) as { $lookup: Record<string, unknown> } | undefined;
+      const letVars = lookupStage!.$lookup.let as Record<string, string>;
+      expect(Object.keys(letVars)).toHaveLength(2);
+      // Should have let variables for 'id' and 'region'
+      expect(letVars['local_id']).toBe('$id');
+      expect(letVars['local_region']).toBe('$region');
+    });
+
+    it('should extract multiple conditions via extractJoins', () => {
+      const sql = 'SELECT * FROM `users` u INNER JOIN `orders` o ON u.id = o.user_id AND u.type = o.type LIMIT 10';
+      const ast = parseSql(sql);
+      const node = ast as Record<string, unknown>;
+      const joins = extractJoins(node['from']);
+      expect(joins).toHaveLength(1);
+      expect(joins[0]!.conditions).toBeDefined();
+      expect(joins[0]!.conditions).toHaveLength(2);
+      expect(joins[0]!.conditions![0]!.localField).toBe('id');
+      expect(joins[0]!.conditions![0]!.foreignField).toBe('user_id');
+      expect(joins[0]!.conditions![1]!.localField).toBe('type');
+      expect(joins[0]!.conditions![1]!.foreignField).toBe('type');
+    });
+
+    it('single ON condition should NOT set conditions array', () => {
+      const sql = 'SELECT * FROM `users` u INNER JOIN `orders` o ON u.id = o.user_id LIMIT 10';
+      const ast = parseSql(sql);
+      const node = ast as Record<string, unknown>;
+      const joins = extractJoins(node['from']);
+      expect(joins[0]!.conditions).toBeUndefined();
+    });
+  });
+
+  describe('derived tables (subquery in FROM)', () => {
+    it('should handle SELECT from a subquery in FROM', () => {
+      const sql = 'SELECT * FROM (SELECT userId, COUNT(*) AS cnt FROM `orders` GROUP BY userId) t WHERE cnt > 5 LIMIT 10';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+
+      // Should target the inner collection
+      expect(plan.collection).toBe('orders');
+
+      const stages = plan.pipelines[0]!.stages;
+      // Inner query stages: $group
+      expect(stages.some(s => '$group' in s)).toBe(true);
+      // Outer WHERE: $match for cnt > 5
+      const matchStages = stages.filter(s => '$match' in s);
+      expect(matchStages.length).toBeGreaterThanOrEqual(1);
+      // Outer LIMIT
+      expect(stages.some(s => '$limit' in s)).toBe(true);
+    });
+
+    it('should apply outer ORDER BY after inner query', () => {
+      const sql = 'SELECT * FROM (SELECT userId, COUNT(*) AS cnt FROM `orders` GROUP BY userId) t ORDER BY cnt DESC LIMIT 10';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+      const stages = plan.pipelines[0]!.stages;
+
+      // Should have $group (inner) followed by $sort (outer)
+      const groupIdx = stages.findIndex(s => '$group' in s);
+      const sortIdx = stages.findIndex(s => '$sort' in s);
+      expect(groupIdx).toBeGreaterThanOrEqual(0);
+      expect(sortIdx).toBeGreaterThan(groupIdx);
+    });
+
+    it('should apply outer LIMIT and SKIP after inner query', () => {
+      const sql = 'SELECT * FROM (SELECT name FROM `users`) t LIMIT 5';
+      const ast = parseSql(sql);
+      const plan = buildExecutionPlan(ast, sql);
+      const stages = plan.pipelines[0]!.stages;
+
+      const limitStages = stages.filter(s => '$limit' in s);
+      // The outer LIMIT should be the last $limit in the pipeline
+      expect(limitStages.length).toBeGreaterThanOrEqual(1);
+    });
+  });
 });

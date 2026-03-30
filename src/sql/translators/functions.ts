@@ -1,10 +1,10 @@
 /**
  * SQL Mode 2 — Function Translator
  *
- * String: UPPER, LOWER, TRIM, CONCAT, LENGTH, SUBSTRING
+ * String: UPPER, LOWER, TRIM, CONCAT, CONCAT_WS, LENGTH, SUBSTRING
  * Numeric: ROUND, ABS
- * Date: NOW, CURRENT_TIMESTAMP, EXTRACT, DATEDIFF
- * Conditional: CASE WHEN, COALESCE, NULLIF, CAST
+ * Date: NOW, CURRENT_TIMESTAMP, EXTRACT, DATEDIFF, DATE_ADD, DATE_SUB, DATE_TRUNC, DATE_FORMAT, TIMESTAMPDIFF
+ * Conditional: CASE WHEN, COALESCE, NULLIF, CAST, CONVERT
  */
 
 /**
@@ -67,12 +67,40 @@ function translateNamedFunction(expr: Record<string, unknown>): Record<string, u
       return { $toLower: args[0] ?? '' };
     case 'TRIM':
       return { $trim: { input: args[0] ?? '' } };
+    case 'LTRIM':
+      return { $ltrim: { input: args[0] ?? '' } };
+    case 'RTRIM':
+      return { $rtrim: { input: args[0] ?? '' } };
     case 'CONCAT':
       return { $concat: args };
+    case 'CONCAT_WS': {
+      // CONCAT_WS(separator, str1, str2, ...)
+      // MongoDB has no direct equivalent — use $reduce
+      const sep = args[0];
+      const strings = args.slice(1);
+      if (strings.length === 0) return (sep as string) ?? '';
+      return {
+        $reduce: {
+          input: strings.slice(1),
+          initialValue: strings[0],
+          in: { $concat: ['$$value', sep, '$$this'] },
+        },
+      };
+    }
     case 'LENGTH':
     case 'CHAR_LENGTH':
     case 'CHARACTER_LENGTH':
       return { $strLenCP: args[0] ?? '' };
+    case 'POSITION':
+    case 'LOCATE':
+      // POSITION(substr IN str) / LOCATE(substr, str) — args[0]=substr, args[1]=str
+      return { $indexOfCP: [args[1] ?? '', args[0] ?? ''] };
+    case 'INSTR':
+      // INSTR(str, substr) — args[0]=str, args[1]=substr
+      return { $indexOfCP: [args[0] ?? '', args[1] ?? ''] };
+    case 'CHARINDEX':
+      // CHARINDEX(substr, str) — args[0]=substr, args[1]=str
+      return { $indexOfCP: [args[1] ?? '', args[0] ?? ''] };
     case 'SUBSTRING':
     case 'SUBSTR':
       return { $substrCP: [args[0] ?? '', (args[1] as number ?? 1) - 1, args[2] ?? 999999] };
@@ -87,6 +115,9 @@ function translateNamedFunction(expr: Record<string, unknown>): Record<string, u
       return { $ceil: args[0] ?? '' };
     case 'FLOOR':
       return { $floor: args[0] ?? '' };
+    case 'TRUNC':
+    case 'TRUNCATE':
+      return { $trunc: args.length > 1 ? [args[0] ?? 0, args[1] ?? 0] : (args[0] ?? 0) };
 
     // Date functions
     case 'NOW':
@@ -104,8 +135,39 @@ function translateNamedFunction(expr: Record<string, unknown>): Record<string, u
           unit: (args[2] as string) ?? 'day',
         },
       };
+    case 'DATE_ADD':
+    case 'DATEADD':
+      // DATE_ADD(date, INTERVAL n unit) → $dateAdd
+      return { $dateAdd: { startDate: args[0] ?? '$$NOW', unit: (args[2] as string) ?? 'day', amount: args[1] ?? 0 } };
+    case 'DATE_SUB':
+      return { $dateSubtract: { startDate: args[0] ?? '$$NOW', unit: (args[2] as string) ?? 'day', amount: args[1] ?? 0 } };
+    case 'DATE_TRUNC':
+      // DATE_TRUNC(unit, date) → $dateTrunc
+      return { $dateTrunc: { date: args[1] ?? '$$NOW', unit: (args[0] as string) ?? 'day' } };
+    case 'DATE_FORMAT':
+    case 'TO_CHAR':
+      // DATE_FORMAT(date, format) → $dateToString
+      return { $dateToString: { date: args[0] ?? '$$NOW', format: (args[1] as string) ?? '%Y-%m-%d' } };
+    case 'TIMESTAMPDIFF':
+      // TIMESTAMPDIFF(unit, start, end)
+      return { $dateDiff: { startDate: args[1] ?? '', endDate: args[2] ?? '', unit: (args[0] as string) ?? 'day' } };
+    case 'STR_TO_DATE':
+    case 'TO_DATE':
+      return { $dateFromString: { dateString: args[0] ?? '' } };
     case 'DATE':
       return { $toDate: args[0] ?? '' };
+    case 'YEAR': return { $year: args[0] ?? '' };
+    case 'MONTH': return { $month: args[0] ?? '' };
+    case 'DAY': return { $dayOfMonth: args[0] ?? '' };
+    case 'HOUR': return { $hour: args[0] ?? '' };
+    case 'MINUTE': return { $minute: args[0] ?? '' };
+    case 'SECOND': return { $second: args[0] ?? '' };
+    case 'DAYOFWEEK': return { $dayOfWeek: args[0] ?? '' };
+    case 'DAYOFYEAR': return { $dayOfYear: args[0] ?? '' };
+    case 'WEEK': return { $week: args[0] ?? '' };
+    case 'CURRENT_DATE':
+    case 'CURDATE':
+      return '$$NOW';
 
     // Additional string functions
     case 'REPLACE':
@@ -129,11 +191,18 @@ function translateNamedFunction(expr: Record<string, unknown>): Record<string, u
       return { $pow: [args[0] ?? 0, args[1] ?? 0] };
     case 'SQRT':
       return { $sqrt: args[0] ?? 0 };
+    case 'EXP':
+      return { $exp: args[0] ?? 0 };
     case 'LOG':
     case 'LN':
       return { $ln: args[0] ?? 0 };
     case 'LOG10':
       return { $log: [args[0] ?? 0, 10] };
+    case 'LOG2':
+      return { $log: [args[0] ?? 0, 2] };
+    case 'RAND':
+    case 'RANDOM':
+      return { $rand: {} };
     case 'MOD':
       return { $mod: [args[0] ?? 0, args[1] ?? 1] };
     case 'GREATEST':
@@ -149,6 +218,8 @@ function translateNamedFunction(expr: Record<string, unknown>): Record<string, u
     // Conditional
     case 'COALESCE':
     case 'IFNULL':
+      return buildCoalesce(args);
+    case 'ISNULL':
       return buildCoalesce(args);
     case 'NULLIF':
       return {
@@ -166,6 +237,23 @@ function translateNamedFunction(expr: Record<string, unknown>): Record<string, u
           else: args[2] ?? null,
         },
       };
+    case 'IIF':
+      return { $cond: { if: args[0], then: args[1], else: args[2] ?? null } };
+
+    // Type conversion
+    case 'CONVERT': {
+      // CONVERT(expr, type) or CONVERT(type, expr) depending on dialect
+      // Treat same as CAST
+      const input = args[0];
+      const targetType = typeof args[1] === 'string' ? args[1] : 'string';
+      const typeMap: Record<string, string> = {
+        'int': 'int', 'integer': 'int', 'bigint': 'long', 'float': 'double',
+        'double': 'double', 'decimal': 'decimal', 'varchar': 'string',
+        'char': 'string', 'text': 'string', 'boolean': 'bool', 'bool': 'bool',
+        'date': 'date', 'datetime': 'date', 'timestamp': 'date',
+      };
+      return { $convert: { input, to: typeMap[String(targetType).toLowerCase()] ?? 'string' } };
+    }
 
     default:
       return {};

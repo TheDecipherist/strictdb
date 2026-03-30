@@ -237,6 +237,21 @@ function injectDepValues(stages: Record<string, unknown>[], resolved: Map<string
 
 function injectInObject(obj: Record<string, unknown>, resolved: Map<string, unknown[]>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
+
+  // Top-level EXISTS/NOT EXISTS markers (the key IS the marker)
+  if (obj['__existsDepRef']) {
+    const depId = obj['__existsDepRef'] as string;
+    const vals = resolved.get(depId) ?? [];
+    if (vals.length > 0) return {}; // EXISTS = true → empty match (match all)
+    return { _id: { $type: 'undefined' } }; // EXISTS = false → match nothing
+  }
+  if (obj['__notExistsDepRef']) {
+    const depId = obj['__notExistsDepRef'] as string;
+    const vals = resolved.get(depId) ?? [];
+    if (vals.length === 0) return {}; // NOT EXISTS = true → empty match (match all)
+    return { _id: { $type: 'undefined' } }; // NOT EXISTS = false → match nothing
+  }
+
   for (const [key, value] of Object.entries(obj)) {
     if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
       const inner = value as Record<string, unknown>;
@@ -258,6 +273,17 @@ function injectInObject(obj: Record<string, unknown>, resolved: Map<string, unkn
           // Don't add anything to result — effectively a no-op filter
         } else {
           // EXISTS = false → match nothing
+          result['_id'] = { $type: 'undefined' };
+        }
+      } else if (inner['__notExistsDepRef']) {
+        // NOT EXISTS: inverted logic — true when subquery returns no results
+        const depId = inner['__notExistsDepRef'] as string;
+        const vals = resolved.get(depId) ?? [];
+        if (vals.length === 0) {
+          // NOT EXISTS = true (no results) → match all (skip this condition)
+          // Don't add anything to result — effectively a no-op filter
+        } else {
+          // NOT EXISTS = false (results exist) → match nothing
           result['_id'] = { $type: 'undefined' };
         }
       } else {

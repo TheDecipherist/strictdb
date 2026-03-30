@@ -5,9 +5,10 @@
  * LEFT JOIN → $lookup + $unwind (preserveNullAndEmptyArrays: true)
  * RIGHT JOIN → swap collections, LEFT JOIN
  * FULL OUTER JOIN → two pipelines merged
+ * CROSS JOIN → $lookup with empty pipeline (cartesian product)
  */
 
-import type { JoinInfo, PipelineDef } from '../types.js';
+import type { JoinInfo, JoinCondition, PipelineDef } from '../types.js';
 
 export interface JoinResult {
   stages: Record<string, unknown>[];
@@ -29,61 +30,131 @@ export function extractJoins(from: unknown): JoinInfo[] {
     const joinType = normalizeJoinType(item['join'] as string);
     const table = item['table'] as string;
     const alias = item['as'] as string | null;
-    const on = item['on'] as Record<string, unknown>;
+    const on = item['on'] as Record<string, unknown> | null;
 
-    if (on) {
-      const { leftTable, leftField, rightTable, rightField } = extractJoinFields(on);
-
-      // Determine which side is local vs foreign by checking which table
-      // reference matches the joined table (handles reversed ON clauses like ON b.id = a.fk)
-      let localField: string;
-      let foreignField: string;
-      if (rightTable === table || rightTable === alias) {
-        // Right side references the join table → left is local, right is foreign
-        localField = leftField;
-        foreignField = rightField;
-      } else if (leftTable === table || leftTable === alias) {
-        // Left side references the join table → right is local, left is foreign
-        localField = rightField;
-        foreignField = leftField;
-      } else {
-        // Fallback: assume left=local, right=foreign (original behavior)
-        localField = leftField;
-        foreignField = rightField;
-      }
-
+    // CROSS JOIN has no ON clause
+    if (joinType === 'cross') {
       joins.push({
-        type: joinType,
+        type: 'cross',
         table,
         alias: alias ?? undefined,
-        localField,
-        foreignField,
+        localField: '',
+        foreignField: '',
       });
+      continue;
+    }
+
+    if (on) {
+      const conditions = extractJoinConditions(on, table, alias);
+
+      if (conditions.length === 1) {
+        // Single condition — use simple localField/foreignField
+        joins.push({
+          type: joinType,
+          table,
+          alias: alias ?? undefined,
+          localField: conditions[0]!.localField,
+          foreignField: conditions[0]!.foreignField,
+        });
+      } else {
+        // Multi-condition ON — store all conditions
+        joins.push({
+          type: joinType,
+          table,
+          alias: alias ?? undefined,
+          localField: conditions[0]!.localField,
+          foreignField: conditions[0]!.foreignField,
+          conditions,
+        });
+      }
     }
   }
 
   return joins;
 }
 
-function normalizeJoinType(join: string | undefined): 'inner' | 'left' | 'right' | 'full' {
+/**
+ * Extract all equality conditions from an ON clause (handles AND-chained conditions).
+ * Returns an array of { localField, foreignField } pairs with correct local/foreign orientation.
+ */
+function extractJoinConditions(
+  on: Record<string, unknown>,
+  joinTable: string,
+  joinAlias: string | null,
+): JoinCondition[] {
+  const rawPairs = collectEqualityPairs(on);
+  const conditions: JoinCondition[] = [];
+
+  for (const pair of rawPairs) {
+    // Determine which side is local vs foreign
+    let localField: string;
+    let foreignField: string;
+    if (pair.rightTable === joinTable || pair.rightTable === joinAlias) {
+      localField = pair.leftField;
+      foreignField = pair.rightField;
+    } else if (pair.leftTable === joinTable || pair.leftTable === joinAlias) {
+      localField = pair.rightField;
+      foreignField = pair.leftField;
+    } else {
+      // Fallback: assume left=local, right=foreign
+      localField = pair.leftField;
+      foreignField = pair.rightField;
+    }
+    conditions.push({ localField, foreignField });
+  }
+
+  return conditions;
+}
+
+interface RawFieldPair {
+  leftTable?: string;
+  leftField: string;
+  rightTable?: string;
+  rightField: string;
+}
+
+/**
+ * Recursively collect all equality pairs from an ON clause.
+ * Handles: single `=` condition, or AND-chained conditions.
+ */
+function collectEqualityPairs(node: Record<string, unknown>): RawFieldPair[] {
+  const operator = (node['operator'] as string || '').toUpperCase();
+
+  if (operator === 'AND') {
+    const left = node['left'] as Record<string, unknown>;
+    const right = node['right'] as Record<string, unknown>;
+    return [...collectEqualityPairs(left), ...collectEqualityPairs(right)];
+  }
+
+  if (operator === '=') {
+    const left = node['left'] as Record<string, unknown>;
+    const right = node['right'] as Record<string, unknown>;
+    return [{
+      leftTable: left?.['table'] as string | undefined,
+      leftField: left?.['column'] as string ?? 'unknown',
+      rightTable: right?.['table'] as string | undefined,
+      rightField: right?.['column'] as string ?? 'unknown',
+    }];
+  }
+
+  // Fallback for unknown structure
+  return [{
+    leftTable: (node['left'] as Record<string, unknown>)?.['table'] as string | undefined,
+    leftField: (node['left'] as Record<string, unknown>)?.['column'] as string ?? 'unknown',
+    rightTable: (node['right'] as Record<string, unknown>)?.['table'] as string | undefined,
+    rightField: (node['right'] as Record<string, unknown>)?.['column'] as string ?? 'unknown',
+  }];
+}
+
+function normalizeJoinType(join: string | undefined): 'inner' | 'left' | 'right' | 'full' | 'cross' {
   if (!join) return 'inner';
   const upper = join.toUpperCase();
+  if (upper.includes('CROSS')) return 'cross';
   if (upper.includes('LEFT')) return 'left';
   if (upper.includes('RIGHT')) return 'right';
   if (upper.includes('FULL') || upper.includes('OUTER')) return 'full';
   if (upper.includes('INNER') || upper.includes('JOIN')) return 'inner';
   return 'inner';
-}
-
-function extractJoinFields(on: Record<string, unknown>): { leftTable?: string; leftField: string; rightTable?: string; rightField: string } {
-  const left = on['left'] as Record<string, unknown>;
-  const right = on['right'] as Record<string, unknown>;
-  return {
-    leftTable: left?.['table'] as string | undefined,
-    leftField: left?.['column'] as string ?? 'unknown',
-    rightTable: right?.['table'] as string | undefined,
-    rightField: right?.['column'] as string ?? 'unknown',
-  };
 }
 
 /**
@@ -106,6 +177,19 @@ export function translateJoins(
     // Get any pushdown filter for this join table
     const pushdown = pushdownFilters?.get(join.alias ?? join.table);
 
+    // CROSS JOIN: cartesian product via $lookup with empty pipeline
+    if (join.type === 'cross') {
+      stages.push({
+        $lookup: {
+          from: join.table,
+          pipeline: [],
+          as: join.alias ?? join.table,
+        },
+      });
+      stages.push({ $unwind: `$${join.alias ?? join.table}` });
+      continue;
+    }
+
     if (join.type === 'right') {
       // RIGHT JOIN: swap collections, use LEFT JOIN logic
       const lookupStages = buildLookupStages(
@@ -115,6 +199,7 @@ export function translateJoins(
         join.table,
         true, // preserveNullAndEmptyArrays for LEFT
         pushdown,
+        join.conditions ? reverseConditions(join.conditions) : undefined,
       );
       // Swapped: main collection is now the join table
       currentMainCollection = join.table;
@@ -132,6 +217,7 @@ export function translateJoins(
         join.alias ?? join.table,
         true,
         pushdown,
+        join.conditions,
       );
       stages.push(...leftStages);
 
@@ -166,6 +252,7 @@ export function translateJoins(
       join.alias ?? join.table,
       preserveNull,
       pushdown,
+      join.conditions,
     );
     stages.push(...lookupStages);
   }
@@ -266,6 +353,13 @@ function stripTablePrefix(node: Record<string, unknown>, _alias: string): Record
   return node;
 }
 
+/**
+ * Reverse conditions (swap local/foreign) for RIGHT JOIN collection swap.
+ */
+function reverseConditions(conditions: JoinCondition[]): JoinCondition[] {
+  return conditions.map(c => ({ localField: c.foreignField, foreignField: c.localField }));
+}
+
 function buildLookupStages(
   fromCollection: string,
   localField: string,
@@ -273,10 +367,38 @@ function buildLookupStages(
   asField: string,
   preserveNull: boolean,
   pushdownFilter?: Record<string, unknown>,
+  conditions?: JoinCondition[],
 ): Record<string, unknown>[] {
   const stages: Record<string, unknown>[] = [];
 
-  if (pushdownFilter && Object.keys(pushdownFilter).length > 0) {
+  // Multi-condition ON: always use pipeline form
+  if (conditions && conditions.length > 1) {
+    const letVars: Record<string, string> = {};
+    const matchExprs: Record<string, unknown>[] = [];
+
+    for (const cond of conditions) {
+      const varName = `local_${cond.localField.replace(/\./g, '_')}`;
+      letVars[varName] = `$${cond.localField}`;
+      matchExprs.push({ $eq: [`$${cond.foreignField}`, `$$${varName}`] });
+    }
+
+    const pipelineStages: Record<string, unknown>[] = [
+      { $match: { $expr: matchExprs.length === 1 ? matchExprs[0] : { $and: matchExprs } } },
+    ];
+
+    if (pushdownFilter && Object.keys(pushdownFilter).length > 0) {
+      pipelineStages.push({ $match: pushdownFilter });
+    }
+
+    stages.push({
+      $lookup: {
+        from: fromCollection,
+        let: letVars,
+        pipeline: pipelineStages,
+        as: asField,
+      },
+    });
+  } else if (pushdownFilter && Object.keys(pushdownFilter).length > 0) {
     // Use pipeline form of $lookup for filter pushdown
     stages.push({
       $lookup: {
