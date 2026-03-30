@@ -474,7 +474,21 @@ export class StrictDB {
         return SqlEngine.execute(sql, options, tx.backend, tx.getSqlAdapter()) as Promise<SqlMode2Result>;
       });
     }
-    return SqlEngine.execute(sql, options, this.backend, this.getSqlAdapter());
+
+    // For SQL backends with { raw: true }, provide a rawExecutor that passes SQL to the native driver
+    let rawExecutor: ((s: string, params?: unknown[]) => Promise<unknown>) | undefined;
+    if (this.backend === 'sql') {
+      rawExecutor = async (s: string, params?: unknown[]) => {
+        const raw = this.adapter.raw() as { execute?(sql: string, params?: unknown[]): Promise<{ rows?: unknown[] }> };
+        if (raw?.execute) {
+          const result = await raw.execute(s, params);
+          return result.rows ?? [];
+        }
+        return [];
+      };
+    }
+
+    return SqlEngine.execute(sql, options, this.backend, this.getSqlAdapter(), rawExecutor);
   }
 
   // ─── Native Pipeline API ───────────────────────────────────────────────────
@@ -575,6 +589,16 @@ export class StrictDB {
 
     this.logger.logOperation(receipt);
     return receipt;
+  }
+
+  /**
+   * Alias for nativeBulkWrite — matches MongoDB driver naming convention.
+   */
+  async bulkWrite(
+    collection: string,
+    operations: NativeBulkWriteOp[],
+  ): Promise<OperationReceipt> {
+    return this.nativeBulkWrite(collection, operations);
   }
 
   // ─── Transactions ──────────────────────────────────────────────────────────

@@ -11,8 +11,8 @@ import type { JoinInfo, PipelineDef } from '../types.js';
 
 export interface JoinResult {
   stages: Record<string, unknown>[];
-  /** For FULL OUTER JOIN, the second pipeline */
-  secondPipeline?: PipelineDef;
+  /** For FULL OUTER JOINs, the second pipelines (one per FULL OUTER JOIN) */
+  secondPipelines?: PipelineDef[];
   /** The main collection (may be swapped for RIGHT JOIN) */
   mainCollection?: string;
 }
@@ -100,7 +100,7 @@ export function translateJoins(
 
   const stages: Record<string, unknown>[] = [];
   let currentMainCollection = mainCollection;
-  let secondPipeline: PipelineDef | undefined;
+  const secondPipelines: PipelineDef[] = [];
 
   for (const join of joins) {
     // Get any pushdown filter for this join table
@@ -149,10 +149,10 @@ export function translateJoins(
         { $project: { _left_match: 0 } },
       ];
 
-      secondPipeline = {
+      secondPipelines.push({
         collection: join.table,
         stages: rightOnlyStages,
-      };
+      });
 
       continue;
     }
@@ -170,7 +170,11 @@ export function translateJoins(
     stages.push(...lookupStages);
   }
 
-  return { stages, secondPipeline, mainCollection: currentMainCollection };
+  return {
+    stages,
+    secondPipelines: secondPipelines.length > 0 ? secondPipelines : undefined,
+    mainCollection: currentMainCollection,
+  };
 }
 
 /**

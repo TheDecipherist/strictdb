@@ -35,6 +35,7 @@ import { validateIndexName } from '../sanitize.js';
 type ElasticClient = {
   search(params: Record<string, unknown>): Promise<Record<string, unknown>>;
   index(params: Record<string, unknown>): Promise<Record<string, unknown>>;
+  update(params: Record<string, unknown>): Promise<Record<string, unknown>>;
   bulk(params: Record<string, unknown>): Promise<Record<string, unknown>>;
   count(params: Record<string, unknown>): Promise<Record<string, unknown>>;
   updateByQuery(params: Record<string, unknown>): Promise<Record<string, unknown>>;
@@ -270,31 +271,97 @@ export class ElasticAdapter implements DatabaseAdapter {
         operations.push(doc as Record<string, unknown>);
       }
 
-      await client.bulk({
+      const result = await client.bulk({
         body: operations,
         refresh: 'wait_for',
       });
+
+      // Extract inserted IDs from bulk response items
+      const insertedIds: string[] = [];
+      const items = (result['items'] as Array<Record<string, unknown>>) ?? [];
+      for (const item of items) {
+        const indexOp = item['index'] as Record<string, unknown> | undefined;
+        const id = indexOp?.['_id'] as string | undefined;
+        if (id) insertedIds.push(id);
+      }
 
       return createReceipt({
         operation: 'insertMany',
         collection,
         backend: 'elastic',
         startTime,
-        insertedCount: docs.length,
+        insertedCount: insertedIds.length > 0 ? insertedIds.length : docs.length,
+        insertedIds: insertedIds.length > 0 ? insertedIds : undefined,
       });
     } catch (err) {
       throw mapNativeError('elastic', err, collection, 'insertMany');
     }
   }
 
-  async updateOne<T>(collection: string, filter: StrictFilter<T>, update: UpdateOperators<T>, _upsert?: boolean): Promise<OperationReceipt> {
+  async updateOne<T>(collection: string, filter: StrictFilter<T>, update: UpdateOperators<T>, upsert?: boolean): Promise<OperationReceipt> {
     validateIndexName(collection);
     const startTime = Date.now();
     try {
       const client = this.getClient();
-      const query = translateToElastic(filter as Record<string, unknown>);
       const script = translateUpdateToElastic(update as UpdateOperators<Record<string, unknown>>);
 
+      if (upsert) {
+        // For upsert: first find the document by filter to get its _id
+        const query = translateToElastic(filter as Record<string, unknown>);
+        const searchResult = await client.search({
+          index: collection,
+          size: 1,
+          body: { query },
+        });
+        const hits = (searchResult['hits'] as Record<string, unknown>)?.['hits'] as Array<Record<string, unknown>> | undefined;
+        const existingDoc = hits?.[0];
+
+        if (existingDoc) {
+          // Document exists — update it using doc_as_upsert via client.update
+          const docId = existingDoc['_id'] as string;
+          const result = await client.update({
+            index: collection,
+            id: docId,
+            body: {
+              script: {
+                source: script.source,
+                params: script.params,
+                lang: 'painless',
+              },
+              upsert: existingDoc['_source'],
+            },
+            refresh: true,
+          });
+          const resultType = result['result'] as string | undefined;
+          return createReceipt({
+            operation: 'updateOne',
+            collection,
+            backend: 'elastic',
+            startTime,
+            matchedCount: 1,
+            modifiedCount: resultType === 'updated' ? 1 : 0,
+          });
+        } else {
+          // No match — insert the $set fields as a new document
+          const setFields = (update as Record<string, unknown>)['$set'] as Record<string, unknown> | undefined ?? {};
+          const insertResult = await client.index({
+            index: collection,
+            body: setFields,
+            refresh: true,
+          });
+          const upsertedId = (insertResult as Record<string, unknown>)['_id'] as string | undefined;
+          return createReceipt({
+            operation: 'updateOne',
+            collection,
+            backend: 'elastic',
+            startTime,
+            insertedCount: 1,
+            upsertedId,
+          });
+        }
+      }
+
+      const query = translateToElastic(filter as Record<string, unknown>);
       const result = await client.updateByQuery({
         index: collection,
         body: {
@@ -479,6 +546,8 @@ export class ElasticAdapter implements DatabaseAdapter {
     validateIndexName(collection);
     const client = this.getClient();
     const bulkOps: Record<string, unknown>[] = [];
+    let modifiedCount = 0;
+    let deletedCount = 0;
 
     for (const op of operations) {
       if ('insertOne' in op) {
@@ -490,7 +559,7 @@ export class ElasticAdapter implements DatabaseAdapter {
         const query = translateToElastic(filter);
         const script = translateUpdateToElastic(update as UpdateOperators<Record<string, unknown>>);
         // updateByQuery doesn't fit into bulk API — execute separately
-        await client.updateByQuery({
+        const updateResult = await client.updateByQuery({
           index: collection,
           body: {
             query,
@@ -500,12 +569,13 @@ export class ElasticAdapter implements DatabaseAdapter {
           ...(upsert ? {} : {}),
           refresh: true,
         });
+        modifiedCount += (updateResult['updated'] as number) ?? 0;
 
       } else if ('updateMany' in op) {
         const { filter, update } = op.updateMany;
         const query = translateToElastic(filter);
         const script = translateUpdateToElastic(update as UpdateOperators<Record<string, unknown>>);
-        await client.updateByQuery({
+        const updateResult = await client.updateByQuery({
           index: collection,
           body: {
             query,
@@ -513,25 +583,28 @@ export class ElasticAdapter implements DatabaseAdapter {
           },
           refresh: true,
         });
+        modifiedCount += (updateResult['updated'] as number) ?? 0;
 
       } else if ('deleteOne' in op) {
         const { filter } = op.deleteOne;
         const query = translateToElastic(filter);
-        await client.deleteByQuery({
+        const deleteResult = await client.deleteByQuery({
           index: collection,
           body: { query },
           max_docs: 1,
           refresh: true,
         });
+        deletedCount += (deleteResult['deleted'] as number) ?? 0;
 
       } else if ('deleteMany' in op) {
         const { filter } = op.deleteMany;
         const query = translateToElastic(filter);
-        await client.deleteByQuery({
+        const deleteResult = await client.deleteByQuery({
           index: collection,
           body: { query },
           refresh: true,
         });
+        deletedCount += (deleteResult['deleted'] as number) ?? 0;
 
       } else if ('replaceOne' in op) {
         const { filter, replacement } = op.replaceOne;
@@ -567,8 +640,8 @@ export class ElasticAdapter implements DatabaseAdapter {
 
     return {
       insertedCount,
-      modifiedCount: 0, // ES updateByQuery doesn't return per-op counts here
-      deletedCount: 0,
+      modifiedCount,
+      deletedCount,
       insertedIds: insertedIds.length > 0 ? insertedIds : undefined,
     };
   }

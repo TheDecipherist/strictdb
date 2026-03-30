@@ -203,6 +203,9 @@ export class MongoAdapter implements DatabaseAdapter {
         filter as Record<string, unknown>,
         update as Record<string, unknown>,
       );
+      // TODO: hardcoded counts are wrong — core/db/mongo.ts updateMany returns void.
+      // Update core updateMany to return MongoWriteResult (matchedCount, modifiedCount)
+      // so actual counts can be reported here.
       return createReceipt({
         operation: 'updateMany',
         collection,

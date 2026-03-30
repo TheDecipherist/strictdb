@@ -94,6 +94,8 @@ function translateNamedFunction(expr: Record<string, unknown>): Record<string, u
       return '$$NOW';
     case 'EXTRACT':
       return translateExtract(expr);
+    case 'DATEPART':
+      return translateDatepart(expr);
     case 'DATEDIFF':
       return {
         $dateDiff: {
@@ -256,6 +258,46 @@ function translateExtract(expr: Record<string, unknown>): Record<string, unknown
   const op = partMap[part];
   if (op) return { [op]: field };
   return { $year: field };
+}
+
+function translateDatepart(expr: Record<string, unknown>): Record<string, unknown> {
+  // DATEPART(part, field) — MSSQL/T-SQL syntax
+  // AST: { type: 'function', name: 'DATEPART', args: { type: 'expr_list', value: [partNode, fieldNode] } }
+  const args = expr['args'] as Record<string, unknown> | undefined;
+  let partStr = 'year';
+  let field = '';
+
+  if (args?.['type'] === 'expr_list') {
+    const values = args['value'] as Array<Record<string, unknown>>;
+    const partNode = values?.[0];
+    const fieldNode = values?.[1];
+
+    // Part may come in as { type: 'origin', value: 'year' } or { type: 'column_ref', column: 'year' } etc.
+    if (partNode) {
+      const raw = (partNode['value'] ?? partNode['column'] ?? '') as string;
+      partStr = raw.toLowerCase();
+    }
+
+    if (fieldNode) {
+      if (fieldNode['type'] === 'column_ref') {
+        field = `$${fieldNode['column'] as string}`;
+      } else {
+        field = (fieldNode['value'] as string) ?? '';
+      }
+    }
+  }
+
+  const partMap: Record<string, string> = {
+    year: '$year',
+    month: '$month',
+    day: '$dayOfMonth',
+    hour: '$hour',
+    minute: '$minute',
+    second: '$second',
+  };
+
+  const op = partMap[partStr] ?? '$year';
+  return { [op]: field };
 }
 
 function translateCase(expr: Record<string, unknown>): Record<string, unknown> {

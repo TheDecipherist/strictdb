@@ -36,17 +36,23 @@ export async function ensureParser(): Promise<void> {
 
 function getParserSync(): ParserInstance {
   if (!_parser) {
-    // Try dynamic import if available, otherwise throw helpful error
+    // In production ESM, ensureParser() MUST be called first (SqlEngine.execute does this).
+    // In test environments (vitest/tsx), we can fall back to synchronous loading.
     try {
-      // createRequire works in both ESM and CJS contexts
-      const { createRequire } = require('module');
-      const req = createRequire(import.meta.url ?? __filename);
-      const mod = req('node-sql-parser');
-      const Parser = mod.Parser ?? mod.default?.Parser;
-      _parser = new Parser();
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const mod = typeof require !== 'undefined'
+        ? require('node-sql-parser') as Record<string, unknown>
+        : undefined;
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      if (mod) {
+        const Parser = (mod['Parser'] ?? (mod['default'] as Record<string, unknown>)?.['Parser']) as new () => ParserInstance;
+        _parser = new Parser();
+      } else {
+        throw new Error('require not available');
+      }
     } catch {
       throw new Error(
-        'node-sql-parser not loaded. Call await ensureParser() or await db.sql() before using parseSql() synchronously.',
+        'SQL parser not initialized. Ensure db.sql() is called (it loads the parser automatically), or call await ensureParser() first.',
       );
     }
   }
@@ -151,6 +157,7 @@ function formatValue(val: unknown): string {
   if (typeof val === 'number') return String(val);
   if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
   if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+  if (val instanceof Date) return `'${val.toISOString()}'`;
   return `'${String(val).replace(/'/g, "''")}'`;
 }
 
@@ -207,9 +214,6 @@ export function parseSql(sql: string, dialect: SqlMode2Dialect = 'mysql'): unkno
     throw parseError({ sql, detail: msg });
   }
 }
-
-// ensureParserLoaded re-exported as alias for backward compat
-export { ensureParser as ensureParserLoaded };
 
 // ─── Statement Splitting ────────────────────────────────────────────────────
 

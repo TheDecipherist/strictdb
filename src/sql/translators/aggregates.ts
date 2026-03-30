@@ -439,13 +439,6 @@ export function buildWindowStages(specs: WindowSpec[]): Record<string, unknown>[
   return stages;
 }
 
-/**
- * @deprecated Use buildWindowStages instead. Kept for backward compatibility.
- */
-export function buildWindowStage(specs: WindowSpec[]): Record<string, unknown> {
-  return buildSingleWindowStage(specs);
-}
-
 function buildSingleWindowStage(specs: WindowSpec[]): Record<string, unknown> {
   const partitionBy = specs[0]?.partitionBy;
   const sortBy: Record<string, 1 | -1> = {};

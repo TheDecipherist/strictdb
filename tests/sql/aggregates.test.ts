@@ -5,7 +5,7 @@ import {
   buildGroupStage,
   extractAggregateFields,
   hasAggregates,
-  buildWindowStage,
+  buildWindowStages,
   extractWindowSpecs,
   hasWindowFunctions,
 } from '../../src/sql/translators/aggregates.js';

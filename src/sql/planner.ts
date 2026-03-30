@@ -120,9 +120,9 @@ function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
     const joinResult = translateJoins(from, collection, pushdownFilters);
     stages.push(...joinResult.stages);
 
-    // FULL OUTER JOIN produces a second pipeline
-    if (joinResult.secondPipeline) {
-      pipelines.push(joinResult.secondPipeline);
+    // FULL OUTER JOINs each produce a second pipeline
+    if (joinResult.secondPipelines && joinResult.secondPipelines.length > 0) {
+      pipelines.push(...joinResult.secondPipelines);
       parallel = true;
     }
   }

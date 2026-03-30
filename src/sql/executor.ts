@@ -10,20 +10,19 @@
 import type { ExecutionPlan, Dependency, DependencyInfo, SqlMode2Result, WriteOperation } from './types.js';
 import type { OperationReceipt } from '../types.js';
 
-// Track last inserted ID per-process for LAST_INSERT_ID() support
-let _lastInsertId: string | undefined;
-
-/** Get the last inserted ID (for LAST_INSERT_ID() function) */
-export function getLastInsertId(): string | undefined {
-  return _lastInsertId;
-}
-
 /**
  * Adapter interface for the executor — abstracts away the actual MongoDB calls.
  */
 export interface SqlExecutorAdapter {
   aggregate(collection: string, pipeline: Record<string, unknown>[]): Promise<Record<string, unknown>[]>;
   bulkWrite(collection: string, ops: WriteOperation[]): Promise<OperationReceipt>;
+  /** Mutable — set by executor after INSERT to scope last insert ID per instance. */
+  lastInsertId?: string;
+}
+
+/** Get the last inserted ID for the given adapter (for LAST_INSERT_ID() function). */
+export function getLastInsertId(adapter: SqlExecutorAdapter): string | undefined {
+  return adapter.lastInsertId;
 }
 
 /**
@@ -53,10 +52,10 @@ export async function executePlan(
     // Write operations
     const receipt = await executeWrite(plan, adapter, resolvedDeps);
 
-    // Track last insert ID for LAST_INSERT_ID() support
+    // Track last insert ID for LAST_INSERT_ID() support (scoped to this adapter instance)
     const receiptObj = receipt as unknown as Record<string, unknown>;
     if (receiptObj['insertedId']) {
-      _lastInsertId = receiptObj['insertedId'] as string;
+      adapter.lastInsertId = receiptObj['insertedId'] as string;
     }
 
     // Handle RETURNING clause — query back the inserted row(s)
@@ -95,7 +94,7 @@ export async function executePlan(
     for (const row of data) {
       for (const [key, val] of Object.entries(row)) {
         if (val && typeof val === 'object' && (val as Record<string, unknown>)['__lastInsertId']) {
-          row[key] = _lastInsertId ?? null;
+          row[key] = adapter.lastInsertId ?? null;
         }
       }
     }

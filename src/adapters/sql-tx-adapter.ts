@@ -127,9 +127,24 @@ export class SqlTransactionAdapter implements DatabaseAdapter {
     const startTime = Date.now();
     try {
       const query = buildInsertSQL(collection, doc as Record<string, unknown>, this.dialect);
-      const sqlStr = this.dialect === 'pg' ? `${query.sql} RETURNING id` : query.sql;
-      const result = await this.client.query(sqlStr, query.values);
-      const insertedId = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+      let insertedId: string | undefined;
+
+      if (this.dialect === 'pg') {
+        const result = await this.client.query(`${query.sql} RETURNING id`, query.values);
+        insertedId = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+      } else if (this.dialect === 'mysql2') {
+        await this.client.query(query.sql, query.values);
+        const idResult = await this.client.query('SELECT LAST_INSERT_ID() AS id', []);
+        insertedId = (idResult.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+      } else if (this.dialect === 'sqlite') {
+        await this.client.query(query.sql, query.values);
+        const idResult = await this.client.query('SELECT last_insert_rowid() AS id', []);
+        insertedId = (idResult.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+      } else if (this.dialect === 'mssql') {
+        const result = await this.client.query(`${query.sql}; SELECT SCOPE_IDENTITY() AS id`, query.values);
+        insertedId = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+      }
+
       return createReceipt({ operation: 'insertOne', collection, backend: 'sql', startTime, insertedCount: 1, insertedId });
     } catch (err) {
       throw mapNativeError('sql', err, collection, 'insertOne');
@@ -140,10 +155,20 @@ export class SqlTransactionAdapter implements DatabaseAdapter {
     const startTime = Date.now();
     try {
       const query = buildBatchInsertSQL(collection, docs as Record<string, unknown>[], this.dialect);
-      if (query.sql) {
+      let insertedIds: string[] | undefined;
+
+      if (this.dialect === 'pg' && query.sql) {
+        const result = await this.client.query(`${query.sql} RETURNING id`, query.values);
+        const ids = (result.rows ?? [])
+          .map(r => (r as Record<string, unknown>)['id']?.toString())
+          .filter((id): id is string => id !== undefined);
+        if (ids.length > 0) insertedIds = ids;
+      } else if (query.sql) {
+        // mysql2, sqlite, mssql: bulk ID retrieval not supported — insertedIds left undefined
         await this.client.query(query.sql, query.values);
       }
-      return createReceipt({ operation: 'insertMany', collection, backend: 'sql', startTime, insertedCount: docs.length });
+
+      return createReceipt({ operation: 'insertMany', collection, backend: 'sql', startTime, insertedCount: docs.length, insertedIds });
     } catch (err) {
       throw mapNativeError('sql', err, collection, 'insertMany');
     }
@@ -250,10 +275,23 @@ export class SqlTransactionAdapter implements DatabaseAdapter {
     for (const op of operations) {
       if ('insertOne' in op) {
         const query = buildInsertSQL(collection, op.insertOne.document, this.dialect);
-        const sqlStr = this.dialect === 'pg' ? `${query.sql} RETURNING id` : query.sql;
-        const result = await this.client.query(sqlStr, query.values);
         insertedCount++;
-        const id = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+        let id: string | undefined;
+        if (this.dialect === 'pg') {
+          const result = await this.client.query(`${query.sql} RETURNING id`, query.values);
+          id = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+        } else if (this.dialect === 'mysql2') {
+          await this.client.query(query.sql, query.values);
+          const idResult = await this.client.query('SELECT LAST_INSERT_ID() AS id', []);
+          id = (idResult.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+        } else if (this.dialect === 'sqlite') {
+          await this.client.query(query.sql, query.values);
+          const idResult = await this.client.query('SELECT last_insert_rowid() AS id', []);
+          id = (idResult.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+        } else if (this.dialect === 'mssql') {
+          const result = await this.client.query(`${query.sql}; SELECT SCOPE_IDENTITY() AS id`, query.values);
+          id = (result.rows?.[0] as Record<string, unknown>)?.['id']?.toString();
+        }
         if (id) insertedIds.push(id);
 
       } else if ('updateOne' in op) {
