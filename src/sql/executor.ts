@@ -106,6 +106,26 @@ export async function executePlan(
     }
   }
 
+  // Strip MongoDB _id from SQL results when it's not a real document field:
+  // - null (aggregate without GROUP BY)
+  // - duplicated by another column (GROUP BY key aliased in SELECT)
+  // Keep it when it's a real ObjectId from SELECT *
+  if (plan.type === 'select' && data.length > 0) {
+    for (const row of data) {
+      if (!('_id' in row)) continue;
+      const id = row['_id'];
+      if (id === null) {
+        delete row['_id'];
+      } else if (typeof id !== 'object') {
+        // Primitive _id (string/number from GROUP BY) — remove if another field has the same value
+        const otherValues = Object.entries(row).filter(([k]) => k !== '_id').map(([, v]) => v);
+        if (otherValues.includes(id)) {
+          delete row['_id'];
+        }
+      }
+    }
+  }
+
   const durationMs = Date.now() - startTime;
 
   const result: SqlMode2Result = { data };

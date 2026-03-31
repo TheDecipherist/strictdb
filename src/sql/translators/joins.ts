@@ -171,6 +171,9 @@ export function translateJoins(
 
   const stages: Record<string, unknown>[] = [];
   let currentMainCollection = mainCollection;
+  // Track the current main table's alias (for RIGHT JOIN swap)
+  const fromArr = from as Array<Record<string, unknown>> | undefined;
+  let currentMainAlias = (fromArr?.[0]?.['as'] as string) ?? mainCollection;
   const secondPipelines: PipelineDef[] = [];
 
   for (const join of joins) {
@@ -192,17 +195,20 @@ export function translateJoins(
 
     if (join.type === 'right') {
       // RIGHT JOIN: swap collections, use LEFT JOIN logic
+      // The original main (e.g. "users" aliased "u") becomes the looked-up table,
+      // stored under its original alias so projections like u.name resolve correctly.
       const lookupStages = buildLookupStages(
-        currentMainCollection, // The original main becomes the "foreign"
+        currentMainCollection, // The original main becomes the "from" in $lookup
         join.foreignField,
         join.localField,
-        join.table,
+        currentMainAlias,      // Store looked-up data under the original main's alias
         true, // preserveNullAndEmptyArrays for LEFT
         pushdown,
         join.conditions ? reverseConditions(join.conditions) : undefined,
       );
       // Swapped: main collection is now the join table
       currentMainCollection = join.table;
+      currentMainAlias = join.alias ?? join.table;
       stages.push(...lookupStages);
       continue;
     }
@@ -309,6 +315,11 @@ function filterWhereNode(
   if (operator === 'OR') return node;
 
   // Check if this condition references a join table
+  // IS NULL / IS NOT NULL on joined fields = anti-join pattern → keep as post-join filter
+  if (operator === 'IS' || operator === 'IS NOT') {
+    return node; // Never push down IS NULL checks — they're anti-join patterns
+  }
+
   const joinAlias = getConditionJoinAlias(node, joinAliases);
   if (joinAlias) {
     // Collect this condition for pushdown — strip the table prefix from the field

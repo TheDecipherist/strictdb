@@ -198,21 +198,18 @@ export class MongoAdapter implements DatabaseAdapter {
   async updateMany<T>(collection: string, filter: StrictFilter<T>, update: UpdateOperators<T>): Promise<OperationReceipt> {
     const startTime = Date.now();
     try {
-      await mongo.updateMany(
+      const result = await mongo.updateMany(
         collection,
         filter as Record<string, unknown>,
         update as Record<string, unknown>,
       );
-      // TODO: hardcoded counts are wrong — core/db/mongo.ts updateMany returns void.
-      // Update core updateMany to return MongoWriteResult (matchedCount, modifiedCount)
-      // so actual counts can be reported here.
       return createReceipt({
         operation: 'updateMany',
         collection,
         backend: 'mongo',
         startTime,
-        matchedCount: 1,
-        modifiedCount: 1,
+        matchedCount: result.matchedCount ?? 0,
+        modifiedCount: result.modifiedCount ?? 0,
       });
     } catch (err) {
       throw mapNativeError('mongo', err, collection, 'updateMany');

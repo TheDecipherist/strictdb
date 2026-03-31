@@ -118,6 +118,11 @@ export async function connect(
   const db = client.db(dbName);
 
   pools.set(connectionUri, { client, db, label });
+
+  // Also update the default db reference so getDb() works without env vars
+  _defaultDb = db;
+  _defaultClient = client;
+
   console.log(`[db:${label}] Connected to ${dbName} (pool: ${poolConfig.maxPoolSize} max)`);
 
   return { client, db };

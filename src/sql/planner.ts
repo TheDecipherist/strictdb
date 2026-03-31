@@ -78,7 +78,7 @@ function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
     return planDerivedTableSelect(ast, derivedTable, _sql);
   }
 
-  const collection = extractCollection(ast);
+  let collection = extractCollection(ast);
   const tableAliases = buildTableAliases(ast['from']);
 
   // 1. Extract CTEs (WITH clause)
@@ -135,6 +135,14 @@ function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
     const joinResult = translateJoins(from, collection, pushdownFilters);
     stages.push(...joinResult.stages);
 
+    // RIGHT JOIN swaps the main collection — update tableAliases so
+    // projections know which table is now the main (avoids nested prefixes)
+    if (joinResult.mainCollection && joinResult.mainCollection !== collection) {
+      collection = joinResult.mainCollection;
+      // __main__ stores the table name, update it to the swapped collection
+      tableAliases.set('__main__', collection);
+    }
+
     // FULL OUTER JOINs each produce a second pipeline
     if (joinResult.secondPipelines && joinResult.secondPipelines.length > 0) {
       pipelines.push(...joinResult.secondPipelines);
@@ -159,7 +167,7 @@ function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
   const isWindow = hasWindowFunctions(columns);
 
   if (isAggregate) {
-    const aggFields = extractAggregateFields(columns);
+    const aggFields = extractAggregateFields(columns, tableAliases);
     const groupResult = buildGroupStage(groupBy, aggFields, columns, tableAliases);
 
     // If GROUP BY has complex expressions, add $addFields before $group
@@ -192,6 +200,24 @@ function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
     const having = ast['having'];
     const havingStage = buildHavingStage(having, aggFields);
     if (havingStage) stages.push(havingStage);
+
+    // Post-group: rename _id to the SELECT alias for CASE/function GROUP BY keys
+    if (Array.isArray(columns)) {
+      const groupRenames: Record<string, unknown> = {};
+      for (const col of columns) {
+        const c = col as Record<string, unknown>;
+        const expr = c['expr'] as Record<string, unknown>;
+        const alias = c['as'] as string | null;
+        const exprType = expr?.['type'] as string;
+        if (alias && (exprType === 'case' || exprType === 'function' || exprType === 'extract')) {
+          // This is a CASE/function expression with an alias — map _id to alias
+          groupRenames[alias] = '$_id';
+        }
+      }
+      if (Object.keys(groupRenames).length > 0) {
+        stages.push({ $addFields: groupRenames });
+      }
+    }
   }
 
   if (isWindow) {
@@ -239,7 +265,7 @@ function planSelect(ast: Record<string, unknown>, _sql: string): ExecutionPlan {
   if (limit) stages.push({ $limit: limit });
 
   // SELECT columns → $project (skip for aggregates that already define output)
-  if (!isAggregate && !isWindow) {
+  if (!isAggregate) {
     const distinctVal = ast['distinct'];
     const distinct =
       (typeof distinctVal === 'string' && distinctVal.toUpperCase() === 'DISTINCT') ||

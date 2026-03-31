@@ -225,11 +225,15 @@ export async function updateMany<T extends Document>(
   collection: string,
   filter: Filter<T>,
   update: UpdateFilter<T>
-): Promise<void> {
+): Promise<MongoWriteResult> {
   const db = await getDb();
-  await db.collection<T>(collection).bulkWrite([
+  const result = await db.collection<T>(collection).bulkWrite([
     { updateMany: { filter, update } },
   ]);
+  return {
+    matchedCount: result.matchedCount,
+    modifiedCount: result.modifiedCount,
+  };
 }
 
 /**

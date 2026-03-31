@@ -57,7 +57,7 @@ export function hasWindowFunctions(columns: unknown): boolean {
 /**
  * Extract aggregate fields from columns.
  */
-export function extractAggregateFields(columns: unknown): AggregateField[] {
+export function extractAggregateFields(columns: unknown, tableAliases?: Map<string, string>): AggregateField[] {
   if (!Array.isArray(columns)) return [];
 
   const fields: AggregateField[] = [];
@@ -75,10 +75,13 @@ export function extractAggregateFields(columns: unknown): AggregateField[] {
       if (args?.['expr']) {
         const argExpr = args['expr'] as Record<string, unknown>;
         if (argExpr['type'] === 'column_ref') {
-          const table = argExpr['table'] as string | null;
-          const col = argExpr['column'] as string;
-          // For joined tables, use table.column (e.g., o.total)
-          field = table ? `${table}.${col}` : col;
+          if (tableAliases) {
+            field = resolveColumnRef(argExpr, tableAliases);
+          } else {
+            const table = argExpr['table'] as string | null;
+            const col = argExpr['column'] as string;
+            field = table ? `${table}.${col}` : col;
+          }
         } else if (argExpr['type'] === 'star') {
           field = '*';
         }
@@ -125,23 +128,25 @@ export function extractWindowSpecs(columns: unknown): WindowSpec[] {
       if (argExpr['type'] === 'column_ref') {
         field = argExpr['column'] as string;
       }
-      // Check for offset in args (LAG/LEAD second argument)
-      if (args['orderby'] || argExpr['value']) {
-        // Parse offset from function args
-      }
     }
 
     // Handle LAG/LEAD offset
     if (name === 'LAG' || name === 'LEAD') {
-      // Default offset is 1
       offset = 1;
-      // Try to extract explicit offset from args
-      const argsValue = args?.['expr'] as Record<string, unknown> | undefined;
-      if (argsValue?.['type'] === 'expr_list') {
-        const list = argsValue['value'] as Array<Record<string, unknown>>;
-        if (list && list.length >= 2) {
+      // args is { type: "expr_list", value: [column_ref, number] }
+      if (args?.['type'] === 'expr_list') {
+        const list = args['value'] as Array<Record<string, unknown>>;
+        if (list && list.length >= 1) {
           field = (list[0] as Record<string, unknown>)?.['column'] as string;
+        }
+        if (list && list.length >= 2) {
           offset = (list[1] as Record<string, unknown>)?.['value'] as number ?? 1;
+        }
+      } else if (args?.['expr']) {
+        // Single-arg form: LAG(total) — args.expr is the column_ref
+        const argExpr = args['expr'] as Record<string, unknown>;
+        if (argExpr['type'] === 'column_ref') {
+          field = argExpr['column'] as string;
         }
       }
     }

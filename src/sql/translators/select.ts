@@ -6,6 +6,7 @@
  */
 
 import { coerceValue } from '../coercion.js';
+import { translateFunction } from './functions.js';
 
 // ─── Hoisted Constants (avoid per-call allocation) ──────────────────────────
 
@@ -50,9 +51,11 @@ function translateBinaryExpr(node: Record<string, unknown>): Record<string, unkn
     return { $or: parts };
   }
 
-  // IS NULL / IS NOT NULL
+  // IS NULL / IS NOT NULL — preserve table prefix for anti-join patterns
   if (operator === 'IS') {
-    const field = extractFieldName(left);
+    const table = left['table'] as string | null;
+    const col = extractFieldName(left);
+    const field = table ? `${table}.${col}` : col;
     const rightType = right['type'] as string;
     if (rightType === 'null' || right['value'] === null) {
       return { $or: [{ [field]: null }, { [field]: { $exists: false } }] };
@@ -61,7 +64,9 @@ function translateBinaryExpr(node: Record<string, unknown>): Record<string, unkn
   }
 
   if (operator === 'IS NOT') {
-    const field = extractFieldName(left);
+    const table = left['table'] as string | null;
+    const col = extractFieldName(left);
+    const field = table ? `${table}.${col}` : col;
     const rightType = right['type'] as string;
     if (rightType === 'null' || right['value'] === null) {
       return { [field]: { $exists: true, $ne: null } };
@@ -244,6 +249,12 @@ export function translateColumns(columns: unknown, tableAliases: Map<string, str
       const field = resolveColumnRef(expr, tableAliases);
       if (alias) {
         project[alias] = `$${field}`;
+      } else if (field.includes('.')) {
+        // Table-qualified column (e.g. "r.rating") — flatten to top-level
+        // "r.rating": 1 would produce { r: { rating: 2 } } — wrong
+        // Instead: "rating": "$r.rating" produces { rating: 2 } — correct
+        const colName = expr['column'] as string;
+        project[colName] = `$${field}`;
       } else {
         project[field] = 1;
       }
@@ -251,8 +262,11 @@ export function translateColumns(columns: unknown, tableAliases: Map<string, str
       // Aggregate functions handled by aggregates translator
       continue;
     } else {
-      // Expression columns (functions, etc.)
-      if (alias) {
+      // Expression columns (functions, EXTRACT, CASE, etc.)
+      const translated = translateFunction(expr);
+      if (alias && translated && Object.keys(translated).length > 0) {
+        project[alias] = translated;
+      } else if (alias) {
         project[alias] = 1;
       }
     }
@@ -449,7 +463,8 @@ export function extractInList(node: Record<string, unknown>): unknown[] {
 }
 
 export function resolveColumnRef(expr: Record<string, unknown>, tableAliases: Map<string, string>): string {
-  const column = expr['column'] as string;
+  const column = expr['column'];
+  if (typeof column !== 'string') return '';  // defensive — parser produced non-string column
   const table = expr['table'] as string | null;
 
   if (table) {

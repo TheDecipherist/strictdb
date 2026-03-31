@@ -26,9 +26,19 @@ export function translateFunction(expr: Record<string, unknown>): Record<string,
     return translateCast(expr);
   }
 
-  // Column reference — just return the field path
+  if (type === 'extract') {
+    return translateExtract(expr);
+  }
+
+  if (type === 'binary_expr') {
+    return translateBinaryArithExpr(expr);
+  }
+
+  // Column reference — just return the field path (with table prefix for JOINs)
   if (type === 'column_ref') {
-    return `$${expr['column'] as string}`;
+    const table = expr['table'] as string | null;
+    const column = expr['column'] as string;
+    return table ? `$${table}.${column}` : `$${column}`;
   }
 
   // Literal value
@@ -288,7 +298,11 @@ function extractFunctionArgs(expr: Record<string, unknown>): (unknown)[] {
 
 function argToMongoExpr(node: Record<string, unknown>): unknown {
   const type = node['type'] as string;
-  if (type === 'column_ref') return `$${node['column'] as string}`;
+  if (type === 'column_ref') {
+    const table = node['table'] as string | null;
+    const column = node['column'] as string;
+    return table ? `$${table}.${column}` : `$${column}`;
+  }
   if (type === 'number') {
     // node-sql-parser may return decimal numbers as strings — ensure they're numeric
     const val = node['value'];

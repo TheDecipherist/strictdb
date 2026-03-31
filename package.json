@@ -1,6 +1,6 @@
 {
   "name": "strictdb",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "One unified API for MongoDB, PostgreSQL, MySQL, MSSQL, SQLite, and Elasticsearch. AI-first database driver with guardrails, self-correcting errors, and schema discovery.",
   "main": "dist/index.js",
@@ -56,8 +56,7 @@
     "better-sqlite3": ">=9.0.0",
     "mongodb": ">=6.0.0",
     "mssql": ">=10.0.0",
-    "mysql2": ">=3.0.0",
-    "pg": ">=8.0.0"
+    "mysql2": ">=3.0.0"
   },
   "peerDependenciesMeta": {
     "mongodb": {
@@ -94,5 +93,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "optionalDependencies": {
+    "pg": "^8.20.0"
   }
 }

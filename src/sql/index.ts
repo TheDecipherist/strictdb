@@ -37,14 +37,18 @@ export class SqlEngine {
     // Ensure parser is loaded (lazy — first call pays import cost, subsequent calls are free)
     await ensureParser();
 
-    // Raw passthrough — delegate to native driver
+    // Raw passthrough — delegate to native driver (with dialect normalization)
     if (mode === 'raw' && rawExecutor) {
-      const result = await rawExecutor(sql, options?.params);
+      const normalizedSql = normalizeDialect(sql);
+      const result = await rawExecutor(normalizedSql, options?.params);
       return { data: Array.isArray(result) ? result : [result as Record<string, unknown>] };
     }
 
+    // Normalize cross-dialect syntax before parsing (TOP N → LIMIT N, etc.)
+    const normalizedSql = normalizeDialect(sql);
+
     // Bind parameters
-    const boundSql = bindParams(sql, options?.params, dialect);
+    const boundSql = bindParams(normalizedSql, options?.params, dialect);
 
     // Check for transaction block
     if (isTransactionBlock(boundSql)) {
@@ -126,12 +130,12 @@ export class SqlEngine {
         // UNION ALL — simple concatenation
         merged = [...merged, ...nextData];
       } else {
-        // UNION — concatenate then deduplicate
+        // UNION — concatenate then deduplicate (key-order-independent)
         const combined = [...merged, ...nextData];
         const seen = new Set<string>();
         const deduped: Record<string, unknown>[] = [];
         for (const row of combined) {
-          const key = JSON.stringify(row);
+          const key = stableStringify(row);
           if (!seen.has(key)) {
             seen.add(key);
             deduped.push(row);
@@ -173,4 +177,64 @@ export class SqlEngine {
 
     return { data: results };
   }
+}
+
+/**
+ * Stable JSON serialization for deduplication — insensitive to key insertion order.
+ */
+function stableStringify(obj: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.keys(obj).sort().reduce((acc, k) => { acc[k] = obj[k]; return acc; }, {} as Record<string, unknown>),
+  );
+}
+
+/**
+ * Normalize cross-dialect SQL syntax to standard SQL.
+ * Translates dialect-specific functions so queries work on any backend.
+ *
+ * MSSQL (T-SQL):
+ *   DATEPART(part, field) → EXTRACT(part FROM field)
+ *   GETDATE()             → NOW()
+ *   ISNULL(a, b)          → COALESCE(a, b)
+ *   LEN(x)                → LENGTH(x)
+ *   SELECT TOP N ...      → SELECT ... LIMIT N
+ *
+ * MySQL:
+ *   IFNULL(a, b)          → COALESCE(a, b)
+ *   IF(cond, a, b)        → CASE WHEN cond THEN a ELSE b END
+ */
+function normalizeDialect(sql: string): string {
+  let result = sql;
+
+  // DATEPART(part, field) → EXTRACT(part FROM field)
+  result = result.replace(
+    /\bDATEPART\s*\(\s*(\w+)\s*,\s*([^)]+)\)/gi,
+    'EXTRACT($1 FROM $2)',
+  );
+
+  // GETDATE() → NOW()
+  result = result.replace(/\bGETDATE\s*\(\s*\)/gi, 'NOW()');
+
+  // ISNULL(a, b) → COALESCE(a, b)  (MSSQL)
+  result = result.replace(/\bISNULL\s*\(/gi, 'COALESCE(');
+
+  // IFNULL(a, b) → COALESCE(a, b)  (MySQL)
+  result = result.replace(/\bIFNULL\s*\(/gi, 'COALESCE(');
+
+  // LEN(x) → LENGTH(x)  (MSSQL)
+  result = result.replace(/\bLEN\s*\(/gi, 'LENGTH(');
+
+  // IF(cond, a, b) is handled by the function translator (functions.ts → $cond).
+  // No regex normalization needed here — the parser passes IF as a function node.
+
+  // SELECT TOP N ... → SELECT ... LIMIT N  (MSSQL)
+  const topMatch = result.match(/\bSELECT\s+TOP\s+(\d+)\b/i);
+  if (topMatch) {
+    result = result.replace(/\bTOP\s+\d+\s*/i, '');
+    if (!/\bLIMIT\b/i.test(result)) {
+      result = result.replace(/;?\s*$/, ` LIMIT ${topMatch[1]}`);
+    }
+  }
+
+  return result;
 }
